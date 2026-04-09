@@ -13,11 +13,14 @@ export default function ProfilePage() {
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [samApiKey, setSamApiKey] = useState("");
+  const [showSamHelp, setShowSamHelp] = useState(false);
 
   async function loadProfile() {
     try { const r = await api.get("/profile"); setProfile(r.data || {}); }
     catch { setProfile({}); }
     finally { setLoading(false); }
+    setSamApiKey(localStorage.getItem("sam_api_key") || "");
   }
 
   useEffect(() => { loadProfile(); }, []);
@@ -26,6 +29,11 @@ export default function ProfilePage() {
     setSaving(true); setErr(""); setMsg("");
     try {
       await api.put("/profile", profile);
+      if (samApiKey.trim()) {
+        localStorage.setItem("sam_api_key", samApiKey.trim());
+      } else {
+        localStorage.removeItem("sam_api_key");
+      }
       setMsg("Profile saved!");
       setTimeout(() => setMsg(""), 3000);
     } catch (e: any) { setErr(e?.response?.data?.detail || "Save failed"); }
@@ -124,6 +132,36 @@ export default function ProfilePage() {
             </label>
             {profile.capability_statement_text && <span style={{ fontSize: 12, color: "#28b44c" }}>✅ Statement uploaded ({profile.capability_statement_text.length} chars)</span>}
           </div>
+        </div>
+
+        {/* SAM.gov API Key */}
+        <div style={{ ...card, marginTop: 12 }}>
+          <div style={cardTitle}>🔑 SAM.gov API Connection</div>
+          <div style={{ opacity: 0.6, fontSize: 12, marginTop: 4 }}>
+            Connect to SAM.gov to search live federal opportunities, auto-scan, and find teaming partners.
+          </div>
+          <div style={{ marginTop: 10 }}>
+            <label style={lbl}>SAM.gov API Key</label>
+            <input value={samApiKey} onChange={e => setSamApiKey(e.target.value)} type="password" style={input} placeholder="Enter your SAM.gov API key..." />
+          </div>
+          {samApiKey && <div style={{ fontSize: 11, color: "#28b44c", marginTop: 4 }}>✅ API key configured</div>}
+
+          <button onClick={() => setShowSamHelp(!showSamHelp)} style={{ border: "none", background: "none", color: "rgba(122,63,255,.85)", cursor: "pointer", fontSize: 12, marginTop: 8, padding: 0, fontWeight: 600 }}>
+            {showSamHelp ? "▾ Hide instructions" : "❓ How do I get a SAM.gov API key?"}
+          </button>
+
+          {showSamHelp && (
+            <div style={{ marginTop: 10, padding: 14, borderRadius: 14, background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", fontSize: 12, lineHeight: 1.6 }}>
+              <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 8, color: "rgba(215,182,109,.9)" }}>How to Get Your Free SAM.gov API Key</div>
+              <div style={{ marginBottom: 6 }}><strong>1.</strong> Go to <a href="https://api.data.gov/signup/" target="_blank" rel="noreferrer" style={{ color: "rgba(122,63,255,.85)", textDecoration: "underline" }}>api.data.gov/signup</a></div>
+              <div style={{ marginBottom: 6 }}><strong>2.</strong> Enter your name and email address</div>
+              <div style={{ marginBottom: 6 }}><strong>3.</strong> Check your email — the API key is sent instantly</div>
+              <div style={{ marginBottom: 6 }}><strong>4.</strong> Copy the API key and paste it above</div>
+              <div style={{ marginTop: 8, padding: "8px 12px", borderRadius: 10, background: "rgba(122,63,255,.08)", border: "1px solid rgba(122,63,255,.15)" }}>
+                💡 The SAM.gov API is completely free — it's a public government service. You just need an email address.
+              </div>
+            </div>
+          )}
         </div>
 
         <div style={{ marginTop: 16, textAlign: "center" }}>

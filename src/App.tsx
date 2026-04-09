@@ -5,6 +5,7 @@ import RequireAuth from "./components/RequireAuth";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
+import OnboardingPage from "./pages/OnboardingPage";
 import BidsPage from "./pages/BidsPage";
 import NewBidPage from "./pages/NewBidPage";
 import BidDetailsPage from "./pages/BidDetailsPage";
@@ -26,6 +27,9 @@ export default function App() {
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
 
+      {/* Onboarding (requires auth but shown before main app) */}
+      <Route path="/onboarding" element={<RequireAuth><OnboardingPage /></RequireAuth>} />
+
       {/* Bids */}
       <Route path="/bids" element={<RequireAuth><BidsPage /></RequireAuth>} />
       <Route path="/bids/new" element={<RequireAuth><NewBidPage /></RequireAuth>} />
@@ -37,7 +41,7 @@ export default function App() {
       <Route path="/opportunities/:oppId" element={<RequireAuth><OpportunityDetailPage /></RequireAuth>} />
       <Route path="/profile" element={<RequireAuth><ProfilePage /></RequireAuth>} />
 
-      {/* SAM, Pipeline, War Room, Subcontract Scout */}
+      {/* SAM, Pipeline, War Room, Scout, Autopilot */}
       <Route path="/sam-search" element={<RequireAuth><SAMSearchPage /></RequireAuth>} />
       <Route path="/pipeline" element={<RequireAuth><PipelinePage /></RequireAuth>} />
       <Route path="/war-room/:oppId" element={<RequireAuth><WarRoomPage /></RequireAuth>} />
