@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
+import { clearToken } from "@/lib/auth";
 
 type Opp = Record<string, any>;
 
@@ -22,6 +23,11 @@ export default function DiscoverPage() {
   const [scanning, setScanning] = useState(false);
   const [scanResults, setScanResults] = useState<Opp[] | null>(null);
 
+  // User info
+  const [userName, setUserName] = useState("");
+  const [userCompany, setUserCompany] = useState("");
+  const [showUserMenu, setShowUserMenu] = useState(false);
+
   async function loadOpps() {
     try {
       setLoading(true); setErr(null);
@@ -31,7 +37,27 @@ export default function DiscoverPage() {
     finally { setLoading(false); }
   }
 
-  useEffect(() => { loadOpps(); }, []);
+  useEffect(() => { loadOpps(); loadUser(); }, []);
+
+  async function loadUser() {
+    try {
+      const r = await api.get("/profile");
+      setUserName(r.data?.company_name || "");
+      setUserCompany(r.data?.company_name || "");
+    } catch { }
+    // Also try auth/me for the user's name
+    try {
+      const r = await api.get("/auth/me");
+      if (r.data?.full_name) setUserName(r.data.full_name);
+      if (r.data?.company_name) setUserCompany(r.data.company_name);
+    } catch { }
+  }
+
+  function handleLogout() {
+    clearToken();
+    localStorage.removeItem("token");
+    navigate("/login", { replace: true });
+  }
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0]; if (!f) return;
@@ -88,13 +114,37 @@ export default function DiscoverPage() {
               <span style={{ fontWeight: 400, fontSize: 13, opacity: 0.5, marginLeft: 8 }}>Discovery Hub</span>
             </div>
           </div>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
             <button onClick={() => navigate("/autopilot")} style={btnAutopilot}>⚡ Autopilot</button>
             <button onClick={() => navigate("/sam-search")} style={btnGold}>🔍 SAM.gov</button>
             <button onClick={() => navigate("/subcontract-scout")} style={btnGold}>🤝 Scout</button>
             <button onClick={() => navigate("/pipeline")} style={btnGold}>📊 Pipeline</button>
             <button onClick={() => navigate("/bids")} style={btn}>🗂️ Bids</button>
-            <button onClick={() => navigate("/profile")} style={btn}>👤 Profile</button>
+
+            {/* User Menu */}
+            <div style={{ position: "relative" }}>
+              <button onClick={() => setShowUserMenu(!showUserMenu)} style={{ ...btn, display: "flex", alignItems: "center", gap: 6 }}>
+                <div style={{ width: 24, height: 24, borderRadius: "50%", background: "rgba(122,63,255,.3)", border: "1px solid rgba(122,63,255,.4)", display: "grid", placeItems: "center", fontSize: 11, fontWeight: 900 }}>
+                  {(userName || "U").charAt(0).toUpperCase()}
+                </div>
+                <span style={{ maxWidth: 100, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{userName || "Account"}</span>
+                <span style={{ fontSize: 10, opacity: 0.5 }}>▾</span>
+              </button>
+
+              {showUserMenu && (
+                <>
+                  <div onClick={() => setShowUserMenu(false)} style={{ position: "fixed", inset: 0, zIndex: 99 }} />
+                  <div style={userMenu}>
+                    <div style={{ padding: "10px 14px", borderBottom: "1px solid rgba(255,255,255,.08)" }}>
+                      <div style={{ fontWeight: 800, fontSize: 13 }}>{userName || "User"}</div>
+                      {userCompany && <div style={{ fontSize: 11, opacity: 0.5, marginTop: 2 }}>{userCompany}</div>}
+                    </div>
+                    <button onClick={() => { setShowUserMenu(false); navigate("/profile"); }} style={menuItem}>👤 Profile</button>
+                    <button onClick={() => { setShowUserMenu(false); handleLogout(); }} style={{ ...menuItem, color: "rgba(255,120,120,.9)" }}>🚪 Log out</button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
 
@@ -217,3 +267,5 @@ const btnGold = btnPrimary;
 const btnAutoScan: React.CSSProperties = { ...btn, border: "1px solid rgba(122,63,255,.4)", background: "radial-gradient(420px 160px at 25% 20%,rgba(122,63,255,.22),transparent 60%),linear-gradient(135deg,rgba(122,63,255,.12),rgba(0,212,255,.08))", color: "rgba(200,180,255,.95)" };
 const btnAutopilot: React.CSSProperties = { ...btn, border: "1px solid rgba(122,63,255,.5)", background: "linear-gradient(135deg,rgba(122,63,255,.25),rgba(215,182,109,.12))", color: "#fff", fontWeight: 900, boxShadow: "0 4px 16px rgba(122,63,255,.15)" };
 const errBox: React.CSSProperties = { marginTop: 10, borderRadius: 14, border: "1px solid rgba(255,100,100,.22)", background: "rgba(255,90,90,.08)", padding: 12, color: "rgba(255,150,150,.9)", fontSize: 13 };
+const userMenu: React.CSSProperties = { position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 100, minWidth: 200, borderRadius: 14, border: "1px solid rgba(255,255,255,.12)", background: "rgba(15,18,30,.95)", backdropFilter: "blur(20px)", boxShadow: "0 12px 40px rgba(0,0,0,.6)", overflow: "hidden" };
+const menuItem: React.CSSProperties = { display: "block", width: "100%", padding: "10px 14px", border: "none", background: "transparent", color: "rgba(255,255,255,.85)", fontSize: 13, fontWeight: 600, cursor: "pointer", textAlign: "left" };
