@@ -60,12 +60,14 @@ export default function DiscoverPage() {
   }
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0]; if (!f) return;
+    const fileList = e.target.files; if (!fileList || fileList.length === 0) return;
     setUploading(true); setErr(null);
     try {
       const fd = new FormData();
-      fd.append("file", f);
-      fd.append("title", f.name.replace(/\.[^.]+$/, ""));
+      for (let i = 0; i < fileList.length; i++) {
+        fd.append("files", fileList[i]);
+      }
+      fd.append("title", fileList[0].name.replace(/\.[^.]+$/, ""));
       fd.append("agency_name", "Unknown Agency");
       const r = await api.post("/opportunities/upload-and-analyze", fd, { headers: { "Content-Type": "multipart/form-data" } });
       if (r.data.opp_id) {
@@ -159,7 +161,7 @@ export default function DiscoverPage() {
         <div style={{ display: "flex", gap: 8, marginTop: 12, alignItems: "center", flexWrap: "wrap" }}>
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search..." style={{ ...input, flex: 1, minWidth: 140 }} />
           <button onClick={handleAutoScan} disabled={scanning} style={btnAutoScan}>{scanning ? "⏳ Scanning..." : "🤖 Auto-Scan"}</button>
-          <label style={btnPrimary}>{uploading ? "⏳..." : "📄 Upload RFP"}<input type="file" accept=".pdf,.docx,.doc,.txt" hidden onChange={handleUpload} /></label>
+          <label style={btnPrimary}>{uploading ? "⏳..." : "📄 Upload RFP"}<input type="file" accept=".pdf,.docx,.doc,.txt,.xlsx,.xls,.csv,.rtf" multiple hidden onChange={handleUpload} /></label>
           <button onClick={() => setShowAdd(!showAdd)} style={btn}>{showAdd ? "✕" : "➕"}</button>
         </div>
 
