@@ -4,6 +4,19 @@ import { Icon, cx } from "@/ui/kit";
 
 const CONTACT_EMAIL = "info@sentrihq.com";
 
+/**
+ * Artwork from the Stitch design.
+ *
+ * WARNING: these point at Google's Stitch CDN, which is temporary — the URLs
+ * will stop working at some point and the images will vanish from the live
+ * site. Save the files into `public/` and change these to "/hero.png" etc.
+ */
+const HERO_IMAGE =
+  "https://lh3.googleusercontent.com/aida-public/AB6AXuDUXJVxWL5ap0iTFwhj1kVj7oHCGOR-smXX3Pt0FHDeRc1BwRpSVTEQbpFY-FTrIxfEoipLkIRpv9pNthCLgPyrWUjp_WRea0xiu3h9KNYRLstVXkAkRpbugvwz5cAZqxUJRTDiH-3McJkyebgK2Kepa0dBROM-nF331f3fkjDwjq8OHylnN84njSG4o5BvaS5r90iAu5kHHhLGk7Ge-McG2PxgN28Yj0jI6pYslmR0EdyqeUlDszP5YA";
+
+/** "illustration" uses the artwork above; "preview" uses the drawn dashboard. */
+const HERO_VISUAL: "illustration" | "preview" = "illustration";
+
 const FEATURES = [
   {
     icon: "trending_up",
@@ -31,6 +44,7 @@ export default function LandingPage() {
     <div className="min-h-screen bg-surface">
       <Nav />
       <Hero />
+      <Coverage />
       <Features />
       <Pricing />
       <FinalCta />
@@ -128,9 +142,22 @@ function Hero() {
           </ul>
         </div>
 
-        <ProductPreview />
+        {HERO_VISUAL === "illustration" ? <HeroIllustration /> : <ProductPreview />}
       </div>
     </header>
+  );
+}
+
+function HeroIllustration() {
+  return (
+    <div className="aspect-square w-full overflow-hidden rounded-panel border border-line bg-canvas md:aspect-video lg:aspect-square">
+      <img
+        src={HERO_IMAGE}
+        alt="A government contract document with an official seal"
+        className="h-full w-full object-cover"
+        loading="eager"
+      />
+    </div>
   );
 }
 
@@ -221,11 +248,101 @@ function ProductPreview() {
   );
 }
 
+/* ── Coverage + data sources ──────────────────────────────────────────── */
+
+/**
+ * Industry codes, titles verified against the BLS QCEW industry list and
+ * naics.com. Don't add one without checking it — this is a public claim about
+ * what the product covers.
+ */
+const NAICS_EXAMPLES = [
+  { code: "541512", label: "Computer systems design" },
+  { code: "541330", label: "Engineering services" },
+  { code: "236220", label: "Commercial construction" },
+  { code: "561210", label: "Facilities support" },
+  { code: "561720", label: "Janitorial services" },
+  { code: "561612", label: "Security guards and patrol" },
+  { code: "541611", label: "Management consulting" },
+];
+
+const SOURCES = [
+  { name: "SAM.gov", href: "https://sam.gov", what: "Open federal solicitations" },
+  {
+    name: "USAspending.gov",
+    href: "https://www.usaspending.gov",
+    what: "Awarded contracts and prime contractors",
+  },
+];
+
+function Coverage() {
+  return (
+    <section className="border-b border-line bg-canvas">
+      <div className="mx-auto max-w-content px-5 py-20 sm:px-8">
+        <div className="mx-auto max-w-2xl text-center">
+          <h2 className="text-[32px] font-semibold leading-[1.15] tracking-[-0.02em] text-ink sm:text-[36px]">
+            Works for whatever you do.
+          </h2>
+          <p className="mt-3 text-[17px] leading-relaxed text-muted">
+            Every open federal contract, in every industry code. A few of the ones small businesses
+            bid on most:
+          </p>
+        </div>
+
+        <ul className="mx-auto mt-10 flex max-w-4xl flex-wrap justify-center gap-2.5">
+          {NAICS_EXAMPLES.map((n) => (
+            <li
+              key={n.code}
+              className="inline-flex items-center gap-2 rounded-full border border-line bg-surface py-2 pl-3 pr-4 shadow-card"
+            >
+              <span className="font-mono text-[12px] text-brand-600">{n.code}</span>
+              <span className="text-base text-body">{n.label}</span>
+            </li>
+          ))}
+          <li className="inline-flex items-center rounded-full border border-dashed border-line px-4 py-2 text-base text-muted">
+            …and every other code
+          </li>
+        </ul>
+
+        <div className="mx-auto mt-14 max-w-3xl border-t border-line pt-10">
+          <p className="text-center text-caps uppercase text-muted">Data comes from</p>
+          <ul className="mt-5 flex flex-col items-center justify-center gap-4 sm:flex-row sm:gap-6">
+            {SOURCES.map((s) => (
+              <li key={s.name}>
+                <a
+                  href={s.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="group flex items-center gap-3 rounded-card border border-line bg-surface px-5 py-3 shadow-card transition-shadow hover:shadow-lift"
+                >
+                  <span className="text-[17px] font-semibold tracking-[-0.01em] text-ink">
+                    {s.name.split(".")[0]}
+                    <span className="font-normal text-muted">.{s.name.split(".")[1]}</span>
+                  </span>
+                  <span className="hidden h-8 w-px bg-line sm:block" />
+                  <span className="hidden text-meta text-muted sm:block">{s.what}</span>
+                  <Icon
+                    name="open_in_new"
+                    className="text-[15px] text-faint transition-colors group-hover:text-brand-600"
+                  />
+                </a>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-5 text-center text-meta text-muted">
+            Public data from the US government. SentriBiD is an independent product and isn't
+            affiliated with or endorsed by any federal agency.
+          </p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 /* ── Features ─────────────────────────────────────────────────────────── */
 
 function Features() {
   return (
-    <section id="features" className="border-b border-line bg-canvas">
+    <section id="features" className="border-b border-line">
       <div className="mx-auto max-w-content px-5 py-20 sm:px-8 lg:py-24">
         <h2 className="text-center text-[32px] font-semibold leading-[1.15] tracking-[-0.02em] text-ink sm:text-[36px]">
           Decide with confidence.
@@ -257,7 +374,7 @@ function Features() {
 
 function Pricing() {
   return (
-    <section id="pricing" className="border-b border-line">
+    <section id="pricing" className="border-b border-line bg-canvas">
       <div className="mx-auto max-w-2xl px-5 py-20 text-center sm:px-8 lg:py-24">
         <h2 className="text-[32px] font-semibold leading-[1.15] tracking-[-0.02em] text-ink sm:text-[36px]">
           Pricing
