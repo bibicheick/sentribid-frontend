@@ -4,8 +4,16 @@ import { Icon, cx } from "@/ui/kit";
 
 const CONTACT_EMAIL = "info@sentrihq.com";
 
-/** Served from public/. Local file, so nothing to expire and nothing to fetch. */
+/** All served from public/ — local files, so nothing to expire and nothing to fetch. */
 const HERO_IMAGE = "/hero.jpg";
+const WORKING_IMAGE = "/working.jpg";
+const STREET_IMAGE = "/auth-backdrop.jpg";
+
+const PAIN_POINTS = [
+  "Tens of thousands of contracts are open at any moment. Finding the handful that fit you is a full-time job on its own.",
+  "By the time you work out the incumbent was always going to win it, you've spent a week you can't bill.",
+  "The solicitation runs to eighty pages and it's due in twenty-one days.",
+];
 
 /** "illustration" uses the artwork above; "preview" uses the drawn dashboard. */
 const HERO_VISUAL: "illustration" | "preview" = "illustration";
@@ -37,6 +45,7 @@ export default function LandingPage() {
     <div className="min-h-screen bg-surface">
       <Nav />
       <Hero />
+      <Problem />
       <Coverage />
       <Features />
       <Pricing />
@@ -243,6 +252,50 @@ function ProductPreview() {
   );
 }
 
+/* ── The problem ──────────────────────────────────────────────────────── */
+
+function Problem() {
+  return (
+    <section className="border-b border-line bg-canvas">
+      <div className="mx-auto grid max-w-content items-center gap-12 px-5 py-20 sm:px-8 lg:grid-cols-2 lg:py-24">
+        <div className="order-2 aspect-[4/3] w-full overflow-hidden rounded-panel border border-line bg-surface shadow-lift lg:order-1">
+          <img
+            src={WORKING_IMAGE}
+            alt="Two people working through a table covered in printed solicitations and sticky notes"
+            className="h-full w-full object-cover"
+            width={1024}
+            height={1024}
+            loading="lazy"
+          />
+        </div>
+
+        <div className="order-1 lg:order-2">
+          <h2 className="text-[32px] font-semibold leading-[1.15] tracking-[-0.02em] text-ink sm:text-[36px]">
+            There's a reason most small businesses never bid.
+          </h2>
+          <p className="mt-4 text-[17px] leading-relaxed text-muted">
+            It isn't that the work isn't there. It's that getting to a decision costs more than most
+            small teams can spare.
+          </p>
+
+          <ul className="mt-7 space-y-4">
+            {PAIN_POINTS.map((point) => (
+              <li key={point} className="flex gap-3">
+                <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-bad-solid" />
+                <span className="text-base leading-relaxed text-body">{point}</span>
+              </li>
+            ))}
+          </ul>
+
+          <p className="mt-7 border-l-2 border-brand-600 pl-4 text-[17px] leading-relaxed text-ink">
+            SentriBiD does the reading, so you can make the call in an afternoon.
+          </p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 /* ── Coverage + data sources ──────────────────────────────────────────── */
 
 /**
@@ -271,7 +324,7 @@ const SOURCES = [
 
 function Coverage() {
   return (
-    <section className="border-b border-line bg-canvas">
+    <section className="border-b border-line">
       <div className="mx-auto max-w-content px-5 py-20 sm:px-8">
         <div className="mx-auto max-w-2xl text-center">
           <h2 className="text-[32px] font-semibold leading-[1.15] tracking-[-0.02em] text-ink sm:text-[36px]">
@@ -337,7 +390,7 @@ function Coverage() {
 
 function Features() {
   return (
-    <section id="features" className="border-b border-line">
+    <section id="features" className="border-b border-line bg-canvas">
       <div className="mx-auto max-w-content px-5 py-20 sm:px-8 lg:py-24">
         <h2 className="text-center text-[32px] font-semibold leading-[1.15] tracking-[-0.02em] text-ink sm:text-[36px]">
           Decide with confidence.
@@ -369,7 +422,7 @@ function Features() {
 
 function Pricing() {
   return (
-    <section id="pricing" className="border-b border-line bg-canvas">
+    <section id="pricing" className="border-b border-line">
       <div className="mx-auto max-w-2xl px-5 py-20 text-center sm:px-8 lg:py-24">
         <h2 className="text-[32px] font-semibold leading-[1.15] tracking-[-0.02em] text-ink sm:text-[36px]">
           Pricing
@@ -401,7 +454,12 @@ function Pricing() {
 
 function FinalCta() {
   return (
-    <section className="border-b border-line">
+    <section
+      className="border-b border-line bg-cover bg-center"
+      style={{
+        backgroundImage: `linear-gradient(rgba(255,255,255,0.90), rgba(255,255,255,0.90)), url("${STREET_IMAGE}")`,
+      }}
+    >
       <div className="mx-auto max-w-2xl px-5 py-20 text-center sm:px-8 lg:py-28">
         <h2 className="text-[32px] font-semibold leading-[1.15] tracking-[-0.02em] text-ink sm:text-[40px]">
           Ready to find your first contract?
