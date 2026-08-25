@@ -39,7 +39,7 @@ export default function AuthLayout({
     <div className="flex min-h-screen bg-canvas">
       {/* Left: the pitch. Hidden on small screens — nobody signs in to read it. */}
       <aside className="hidden w-[46%] max-w-xl flex-col justify-between border-r border-line bg-surface p-12 lg:flex">
-        <Link to="/login" className="text-[19px] font-semibold tracking-[-0.02em] text-ink">
+        <Link to="/" className="text-[19px] font-semibold tracking-[-0.02em] text-ink">
           Sentri<span className="text-brand-600">BiD</span>
         </Link>
 
@@ -69,7 +69,7 @@ export default function AuthLayout({
       <main className="flex flex-1 items-center justify-center px-6 py-12">
         <div className="w-full max-w-sm">
           <Link
-            to="/login"
+            to="/"
             className="mb-10 block text-[19px] font-semibold tracking-[-0.02em] text-ink lg:hidden"
           >
             Sentri<span className="text-brand-600">BiD</span>

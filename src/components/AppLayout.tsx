@@ -5,7 +5,7 @@ import { clearToken } from "@/lib/auth";
 import { Avatar, Icon, cx } from "@/ui/kit";
 
 const NAV = [
-  { to: "/", label: "Dashboard", icon: "space_dashboard", end: true },
+  { to: "/dashboard", label: "Dashboard", icon: "space_dashboard", end: true },
   { to: "/find-work", label: "Find Work", icon: "travel_explore" },
   { to: "/pipeline", label: "Pipeline", icon: "view_kanban" },
   { to: "/bids", label: "My Bids", icon: "description" },
@@ -86,7 +86,7 @@ function Sidebar({ me, open, onClose }: { me: Me; open: boolean; onClose: () => 
         )}
       >
         <div className="flex h-16 items-center justify-between px-5">
-          <Link to="/" className="flex items-center gap-2">
+          <Link to="/dashboard" className="flex items-center gap-2">
             <Wordmark />
           </Link>
           <button

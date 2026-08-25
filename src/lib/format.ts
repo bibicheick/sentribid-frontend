@@ -162,9 +162,32 @@ export function clamp(text: unknown, max: number): string {
   return s.slice(0, s.lastIndexOf(" ", max) || max).trimEnd() + "…";
 }
 
-/** API values arrive lowercase ("service", "medium"). Show them as words. */
+/** Names that have a fixed casing, whatever the API sends. */
+const KNOWN_CASING: Record<string, string> = {
+  "sam.gov": "SAM.gov",
+  sam: "SAM.gov",
+  naics: "NAICS",
+  psc: "PSC",
+  uei: "UEI",
+  cage: "CAGE",
+  rfp: "RFP",
+  rfi: "RFI",
+  rfq: "RFQ",
+  ifb: "IFB",
+  idiq: "IDIQ",
+  gsa: "GSA",
+  usaspending: "USAspending",
+  "usaspending.gov": "USAspending.gov",
+};
+
+/** API values arrive lowercase ("service", "medium", "sam.gov"). Show them as words. */
 export function sentence(value: unknown, fallback = "—"): string {
-  const s = String(value ?? "").trim().replace(/[_-]+/g, " ");
-  if (!s) return fallback;
+  const raw = String(value ?? "").trim();
+  if (!raw) return fallback;
+
+  const known = KNOWN_CASING[raw.toLowerCase()];
+  if (known) return known;
+
+  const s = raw.replace(/[_-]+/g, " ");
   return s.charAt(0).toUpperCase() + s.slice(1);
 }

@@ -9,6 +9,7 @@ import {
   EmptyState,
   Icon,
   LinkButton,
+  Meter,
   Segmented,
   SkeletonRows,
   cx,
@@ -17,35 +18,39 @@ import {
   clamp,
   deadlineLabel,
   deadlineTone,
+  formatDate,
   percentLabel,
   scoreTone,
-  shortDate,
   toPercent,
 } from "@/lib/format";
 
-type Card = Record<string, any>;
-type Board = Record<string, Card[]>;
+type PipelineCard = Record<string, any>;
+type Board = Record<string, PipelineCard[]>;
 
 /** Backend stage keys, with names a non-expert reads without translating. */
 const STAGES = [
-  { key: "identified", label: "Found", accent: "bg-neutral-solid" },
-  { key: "qualified", label: "Worth bidding", accent: "bg-brand-500" },
-  { key: "capture", label: "Getting ready", accent: "bg-brand-600" },
-  { key: "proposal", label: "Writing proposal", accent: "bg-warn-solid" },
-  { key: "submitted", label: "Submitted", accent: "bg-warn-solid" },
-  { key: "won", label: "Won", accent: "bg-good-solid" },
-  { key: "lost", label: "Lost", accent: "bg-neutral-line" },
+  { key: "identified", label: "Found", dot: "bg-neutral-solid" },
+  { key: "qualified", label: "Worth bidding", dot: "bg-brand-500" },
+  { key: "capture", label: "Getting ready", dot: "bg-brand-600" },
+  { key: "proposal", label: "Writing proposal", dot: "bg-warn-solid" },
+  { key: "submitted", label: "Submitted", dot: "bg-warn-solid" },
+  { key: "won", label: "Won", dot: "bg-good-solid" },
+  { key: "lost", label: "Lost", dot: "bg-neutral-line" },
 ] as const;
 
 type StageKey = (typeof STAGES)[number]["key"];
 
+const STAGE_LABEL: Record<string, string> = Object.fromEntries(
+  STAGES.map((s) => [s.key, s.label])
+);
+
 export default function PipelinePage() {
   const [board, setBoard] = useState<Board>({});
-  const [view, setView] = useState<"board" | "list">("board");
+  const [view, setView] = useState<"grid" | "list">("grid");
+  const [filter, setFilter] = useState<StageKey | "all">("all");
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
-  const [dragging, setDragging] = useState<Card | null>(null);
-  const [overStage, setOverStage] = useState<string | null>(null);
+  const [moving, setMoving] = useState<number | null>(null);
 
   async function load() {
     try {
@@ -63,16 +68,32 @@ export default function PipelinePage() {
     void load();
   }, []);
 
-  const all = useMemo(() => Object.values(board).flat(), [board]);
-  const active = useMemo(
-    () => all.filter((c) => !["won", "lost"].includes(String(c.pipeline_stage))),
-    [all]
+  const counts = useMemo(() => {
+    const out: Record<string, number> = {};
+    for (const s of STAGES) out[s.key] = (board[s.key] ?? []).length;
+    return out;
+  }, [board]);
+
+  const all = useMemo<PipelineCard[]>(
+    () =>
+      STAGES.flatMap((s) =>
+        (board[s.key] ?? []).map((c) => ({ ...c, _stage: s.key as StageKey }))
+      ),
+    [board]
   );
 
-  async function move(card: Card, to: StageKey) {
-    const from = String(card.pipeline_stage || "identified");
+  const visible = useMemo(
+    () => (filter === "all" ? all : all.filter((c) => c._stage === filter)),
+    [all, filter]
+  );
+
+  const activeCount = all.filter((c) => !["won", "lost"].includes(c._stage)).length;
+
+  async function move(card: PipelineCard, to: StageKey) {
+    const from = String(card.pipeline_stage || card._stage || "identified");
     if (from === to) return;
 
+    setMoving(card.id);
     // Move it on screen first — the request is a formality the user shouldn't wait on.
     setBoard((prev) => {
       const next = { ...prev };
@@ -84,25 +105,23 @@ export default function PipelinePage() {
     try {
       await api.put(`/discovery/pipeline/${card.id}`, { stage: to });
     } catch {
-      setErr("That move didn't save. Reloading the board.");
+      setErr("That move didn't save. Reloading.");
       void load();
+    } finally {
+      setMoving(null);
     }
   }
-
-  const summary =
-    "Every contract you're tracking, from the moment you spot it to the day it's won or lost. Drag a card to move it along.";
 
   return (
     <Page
       title="Pipeline"
-      summary={summary}
-      wide
+      summary="Every contract you're tracking, from the moment you spot it to the day it's won or lost."
       actions={
-        <Segmented<"board" | "list">
+        <Segmented<"grid" | "list">
           value={view}
           onChange={setView}
           options={[
-            { value: "board", label: "Board" },
+            { value: "grid", label: "Grid" },
             { value: "list", label: "List" },
           ]}
         />
@@ -112,12 +131,6 @@ export default function PipelinePage() {
         <Alert className="mb-gap" onDismiss={() => setErr(null)}>
           {err}
         </Alert>
-      ) : null}
-
-      {!loading && all.length > 0 ? (
-        <p className="mb-5 text-meta text-muted">
-          {active.length} active · {board.won?.length ?? 0} won · {board.lost?.length ?? 0} lost
-        </p>
       ) : null}
 
       {loading ? (
@@ -140,201 +153,291 @@ export default function PipelinePage() {
             }
           />
         </Card>
-      ) : view === "list" ? (
-        <ListView board={board} />
       ) : (
-        <div className="-mx-5 overflow-x-auto px-5 pb-4 sm:-mx-8 sm:px-8 lg:-mx-page lg:px-page">
-          <div className="flex min-w-max gap-4">
-            {STAGES.map((stage) => {
-              const cards = board[stage.key] ?? [];
-              const isOver = overStage === stage.key;
-              return (
-                <section
-                  key={stage.key}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    setOverStage(stage.key);
-                  }}
-                  onDragLeave={() => setOverStage((s) => (s === stage.key ? null : s))}
-                  onDrop={() => {
-                    if (dragging) void move(dragging, stage.key);
-                    setDragging(null);
-                    setOverStage(null);
-                  }}
-                  className={cx(
-                    "flex w-[268px] shrink-0 flex-col rounded-card transition-colors",
-                    isOver ? "bg-brand-50 ring-2 ring-brand-200" : "bg-sunken"
-                  )}
-                >
-                  <header className="px-3 pt-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <h2 className="text-h3 text-ink">{stage.label}</h2>
-                      <span className="rounded-full bg-white px-2 py-0.5 text-[12px] font-medium tnum text-muted">
-                        {cards.length}
-                      </span>
-                    </div>
-                    <div className={cx("mt-2.5 h-0.5 rounded-full", stage.accent)} />
-                  </header>
+        <>
+          <p className="mb-4 text-meta text-muted">
+            {activeCount} active · {counts.won} won · {counts.lost} lost
+          </p>
 
-                  <div className="flex flex-1 flex-col gap-2.5 p-3">
-                    {cards.length === 0 ? (
-                      <p className="py-8 text-center text-meta text-faint">Nothing here</p>
-                    ) : (
-                      cards.map((c) => (
-                        <BoardCard
-                          key={c.id}
-                          card={c}
-                          stageKey={stage.key}
-                          onDragStart={() => setDragging(c)}
-                          onDragEnd={() => {
-                            setDragging(null);
-                            setOverStage(null);
-                          }}
-                          onMove={(to) => move(c, to)}
-                        />
-                      ))
-                    )}
-                  </div>
-                </section>
-              );
-            })}
+          {/* Stage filter */}
+          <div className="mb-gap flex flex-wrap gap-2">
+            <FilterChip
+              active={filter === "all"}
+              onClick={() => setFilter("all")}
+              label="All stages"
+              count={all.length}
+            />
+            {STAGES.map((s) => (
+              <FilterChip
+                key={s.key}
+                active={filter === s.key}
+                onClick={() => setFilter(s.key)}
+                label={s.label}
+                count={counts[s.key]}
+                dot={s.dot}
+                dimmed={counts[s.key] === 0}
+              />
+            ))}
           </div>
-        </div>
+
+          {visible.length === 0 ? (
+            <Card padded={false}>
+              <EmptyState
+                icon="filter_alt_off"
+                title={`Nothing in ${STAGE_LABEL[filter as string] ?? "this stage"}`}
+                body="Move something here, or pick a different stage above."
+              />
+            </Card>
+          ) : view === "grid" ? (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {visible.map((card) => (
+                <GridCard
+                  key={card.id}
+                  card={card}
+                  moving={moving === card.id}
+                  onMove={(to) => move(card, to)}
+                />
+              ))}
+            </div>
+          ) : (
+            <ListView cards={visible} onMove={move} moving={moving} />
+          )}
+        </>
       )}
     </Page>
   );
 }
 
-/* ── Board card ───────────────────────────────────────────────────────── */
+/* ── Filter chip ──────────────────────────────────────────────────────── */
 
-function BoardCard({
+function FilterChip({
+  active,
+  onClick,
+  label,
+  count,
+  dot,
+  dimmed,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  count: number;
+  dot?: string;
+  dimmed?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cx(
+        "inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-base font-medium transition-colors",
+        active
+          ? "border-brand-600 bg-brand-50 text-brand-700"
+          : "border-line bg-surface text-muted shadow-card hover:border-[#D7DAE0] hover:text-body",
+        dimmed && !active && "opacity-55"
+      )}
+    >
+      {dot ? <span className={cx("h-1.5 w-1.5 rounded-full", dot)} /> : null}
+      {label}
+      <span className={cx("tnum text-[12px]", active ? "text-brand-600" : "text-faint")}>
+        {count}
+      </span>
+    </button>
+  );
+}
+
+/* ── Grid card ────────────────────────────────────────────────────────── */
+
+function GridCard({
   card,
-  stageKey,
-  onDragStart,
-  onDragEnd,
+  moving,
   onMove,
 }: {
-  card: Card;
-  stageKey: StageKey;
-  onDragStart: () => void;
-  onDragEnd: () => void;
+  card: PipelineCard;
+  moving: boolean;
   onMove: (to: StageKey) => void;
 }) {
   const score = toPercent(card.fit_score);
   const tone = deadlineTone(card.due_date);
-  const idx = STAGES.findIndex((s) => s.key === stageKey);
-  const prev = idx > 0 ? STAGES[idx - 1] : null;
-  const next = idx < STAGES.length - 1 ? STAGES[idx + 1] : null;
+  const stage = String(card.pipeline_stage || card._stage || "identified");
 
   return (
-    <article
-      draggable
-      onDragStart={onDragStart}
-      onDragEnd={onDragEnd}
-      className="group cursor-grab rounded-control border border-line bg-surface p-3.5 shadow-card transition-shadow hover:shadow-lift active:cursor-grabbing"
-    >
-      <Link
-        to={`/opportunities/${card.id}`}
-        className="block text-base font-medium leading-5 text-ink transition-colors hover:text-brand-700"
-      >
-        {clamp(card.title || "Untitled", 60)}
-      </Link>
+    <Card padded={false} className={cx("flex flex-col transition-shadow hover:shadow-lift", moving && "opacity-60")}>
+      <div className="flex-1 p-5">
+        <div className="flex items-start justify-between gap-3">
+          <Link
+            to={`/opportunities/${card.id}`}
+            className="text-h3 leading-snug text-ink transition-colors hover:text-brand-700"
+          >
+            {clamp(card.title || "Untitled", 72)}
+          </Link>
+          {score !== null ? (
+            <Badge tone={scoreTone(score)} className="shrink-0">
+              {percentLabel(score)}
+            </Badge>
+          ) : null}
+        </div>
 
-      <p className="mt-1 text-meta text-muted">{clamp(card.agency_name || "No agency", 34)}</p>
+        <p className="mt-1.5 text-meta text-muted">{clamp(card.agency_name || "No agency listed", 44)}</p>
 
-      <div className="mt-3 flex items-center justify-between gap-2 border-t border-line-soft pt-2.5">
+        <div className="mt-3 flex flex-wrap gap-2">
+          {card.naics_code ? <Badge>NAICS {card.naics_code}</Badge> : null}
+          {card.has_war_room ? <Badge tone="brand">Competition sized up</Badge> : null}
+          {card.has_analysis ? <Badge tone="brand">Reviewed</Badge> : null}
+        </div>
+
         {score !== null ? (
-          <Badge tone={scoreTone(score)}>{percentLabel(score)}</Badge>
-        ) : (
-          <span className="text-meta text-faint">Not scored</span>
-        )}
-        {card.due_date ? (
-          <span
-            className={cx(
-              "inline-flex items-center gap-1 text-meta tnum",
-              tone === "bad" ? "text-bad-ink" : tone === "warn" ? "text-warn-ink" : "text-muted"
-            )}
-          >
-            <Icon name="schedule" className="text-[14px]" />
-            {shortDate(card.due_date)}
-          </span>
+          <div className="mt-4 flex items-center gap-2">
+            <Meter value={score} tone={scoreTone(score)} />
+            <span className="text-meta text-muted">win chance</span>
+          </div>
         ) : null}
+
+        <p
+          className={cx(
+            "mt-4 flex items-center gap-1.5 text-meta",
+            tone === "bad" ? "text-bad-ink" : tone === "warn" ? "text-warn-ink" : "text-muted"
+          )}
+        >
+          <Icon name="schedule" className="text-[14px]" />
+          {card.due_date ? `${deadlineLabel(card.due_date)} · ${formatDate(card.due_date)}` : "No deadline set"}
+        </p>
       </div>
 
-      {/* Keyboard / touch alternative to dragging */}
-      <div className="mt-0 flex max-h-0 gap-1 overflow-hidden opacity-0 transition-all duration-150 focus-within:mt-2 focus-within:max-h-8 focus-within:opacity-100 group-hover:mt-2 group-hover:max-h-8 group-hover:opacity-100">
-        {prev ? (
-          <button
-            type="button"
-            onClick={() => onMove(prev.key)}
-            title={`Move to ${prev.label}`}
-            className="flex h-6 flex-1 items-center justify-center rounded border border-line text-faint hover:bg-sunken hover:text-body"
-          >
-            <Icon name="chevron_left" className="text-[16px]" />
-          </button>
-        ) : null}
-        {next ? (
-          <button
-            type="button"
-            onClick={() => onMove(next.key)}
-            title={`Move to ${next.label}`}
-            className="flex h-6 flex-1 items-center justify-center rounded border border-line text-faint hover:bg-sunken hover:text-body"
-          >
-            <Icon name="chevron_right" className="text-[16px]" />
-          </button>
-        ) : null}
+      <div className="flex items-center gap-2 border-t border-line-soft px-5 py-3">
+        <StageSelect value={stage} onChange={onMove} disabled={moving} />
+        <LinkButton
+          size="sm"
+          tone="ghost"
+          to={`/opportunities/${card.id}`}
+          trailingIcon="arrow_forward"
+          className="ml-auto"
+        >
+          Open
+        </LinkButton>
       </div>
-    </article>
+    </Card>
+  );
+}
+
+/** Moving a card is a select, not a drag — it works on a phone and with a keyboard. */
+function StageSelect({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: string;
+  onChange: (to: StageKey) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <label className="inline-flex items-center gap-1.5">
+      <span className="sr-only">Stage</span>
+      <select
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value as StageKey)}
+        className="h-8 rounded-control border border-line bg-white pl-2.5 pr-7 text-meta font-medium text-body transition-colors hover:border-[#D7DAE0] focus:border-brand-600 focus:outline-none focus:ring-4 focus:ring-brand-600/10 disabled:opacity-50"
+      >
+        {STAGES.map((s) => (
+          <option key={s.key} value={s.key}>
+            {s.label}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 
 /* ── List view ────────────────────────────────────────────────────────── */
 
-function ListView({ board }: { board: Board }) {
-  const rows: Record<string, any>[] = STAGES.flatMap((s) =>
-    (board[s.key] ?? []).map((c) => ({ ...c, _stage: s.label as string }))
-  );
-
+function ListView({
+  cards,
+  onMove,
+  moving,
+}: {
+  cards: PipelineCard[];
+  onMove: (card: PipelineCard, to: StageKey) => void;
+  moving: number | null;
+}) {
   return (
     <Card padded={false} className="overflow-hidden">
-      <table className="w-full text-left">
-        <thead>
-          <tr className="border-b border-line bg-raised">
-            <th className="px-card py-3 text-caps uppercase text-muted">Contract</th>
-            <th className="hidden px-card py-3 text-caps uppercase text-muted sm:table-cell">
-              Stage
-            </th>
-            <th className="hidden px-card py-3 text-caps uppercase text-muted md:table-cell">
-              Due
-            </th>
-            <th className="px-card py-3 text-right text-caps uppercase text-muted">Win chance</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-line-soft">
-          {rows.map((r) => (
-            <tr key={r.id} className="transition-colors hover:bg-raised">
-              <td className="px-card py-3.5">
-                <Link
-                  to={`/opportunities/${r.id}`}
-                  className="text-base font-medium text-ink hover:text-brand-700"
-                >
-                  {clamp(r.title || "Untitled", 62)}
-                </Link>
-                <div className="mt-0.5 text-meta text-muted">{r.agency_name || "No agency"}</div>
-              </td>
-              <td className="hidden px-card py-3.5 sm:table-cell">
-                <Badge>{r._stage}</Badge>
-              </td>
-              <td className="hidden px-card py-3.5 text-meta text-muted md:table-cell">
-                {r.due_date ? deadlineLabel(r.due_date) : "—"}
-              </td>
-              <td className="px-card py-3.5 text-right text-base tnum text-ink">
-                {percentLabel(r.fit_score)}
-              </td>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[720px] text-left">
+          <thead>
+            <tr className="border-b border-line bg-raised">
+              <th className="px-card py-3 text-caps uppercase text-muted">Contract</th>
+              <th className="whitespace-nowrap px-4 py-3 text-caps uppercase text-muted">Stage</th>
+              <th className="whitespace-nowrap px-4 py-3 text-caps uppercase text-muted">Closes</th>
+              <th className="whitespace-nowrap px-4 py-3 text-caps uppercase text-muted">
+                Win chance
+              </th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody className="divide-y divide-line-soft">
+            {cards.map((c) => {
+              const score = toPercent(c.fit_score);
+              const tone = deadlineTone(c.due_date);
+              return (
+                <tr key={c.id} className={cx("transition-colors hover:bg-raised", moving === c.id && "opacity-60")}>
+                  <td className="px-card py-4">
+                    <Link
+                      to={`/opportunities/${c.id}`}
+                      className="text-base font-medium text-ink hover:text-brand-700"
+                    >
+                      {clamp(c.title || "Untitled", 62)}
+                    </Link>
+                    <div className="mt-0.5 text-meta text-muted">
+                      {c.agency_name || "No agency listed"}
+                    </div>
+                  </td>
+                  <td className="px-4 py-4">
+                    <StageSelect
+                      value={String(c.pipeline_stage || c._stage || "identified")}
+                      onChange={(to) => onMove(c, to)}
+                      disabled={moving === c.id}
+                    />
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-4">
+                    {c.due_date ? (
+                      <>
+                        <div className="text-base tnum text-ink">{formatDate(c.due_date)}</div>
+                        <div
+                          className={cx(
+                            "mt-0.5 text-meta",
+                            tone === "bad"
+                              ? "text-bad-ink"
+                              : tone === "warn"
+                              ? "text-warn-ink"
+                              : "text-muted"
+                          )}
+                        >
+                          {deadlineLabel(c.due_date)}
+                        </div>
+                      </>
+                    ) : (
+                      <span className="text-base text-faint">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-4">
+                    {score !== null ? (
+                      <>
+                        <div className="text-base font-medium tnum text-ink">
+                          {percentLabel(score)}
+                        </div>
+                        <Meter value={score} tone={scoreTone(score)} />
+                      </>
+                    ) : (
+                      <span className="text-base text-faint">—</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </Card>
   );
 }

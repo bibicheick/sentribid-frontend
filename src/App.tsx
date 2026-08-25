@@ -1,7 +1,9 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import RequireAuth from "./components/RequireAuth";
 import AppLayout from "./components/AppLayout";
+import { isAuthed } from "./lib/auth";
 
+import LandingPage from "./pages/LandingPage";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
@@ -22,6 +24,9 @@ import ExportPage from "./pages/ExportPage";
 export default function App() {
   return (
     <Routes>
+      {/* The marketing site for visitors; the app for people who are signed in. */}
+      <Route path="/" element={isAuthed() ? <SignedInHome /> : <LandingPage />} />
+
       {/* Signed out */}
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
@@ -53,7 +58,7 @@ export default function App() {
           </RequireAuth>
         }
       >
-        <Route path="/" element={<DashboardPage />} />
+        <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/find-work" element={<FindWorkPage />} />
         <Route path="/pipeline" element={<PipelinePage />} />
         <Route path="/bids" element={<BidsPage />} />
@@ -75,4 +80,9 @@ export default function App() {
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
+}
+
+/** Signed in and asking for "/" — send them to the app, not the sales page. */
+function SignedInHome() {
+  return <Navigate to="/dashboard" replace />;
 }
