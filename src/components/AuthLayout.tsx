@@ -3,14 +3,11 @@ import { Link } from "react-router-dom";
 import { Icon } from "@/ui/kit";
 
 /**
- * Backdrop for the left panel, from the Stitch design. It sits under a heavy
- * white wash so the text stays readable — it's texture, not a picture.
- *
- * WARNING: this points at Google's Stitch CDN, which is temporary. Save the
- * file into `public/` and change this to "/auth-backdrop.png".
+ * Backdrop for the left panel. Served from public/ — a local file, so there's
+ * nothing to expire. It sits under a heavy white wash so the text on top stays
+ * readable: it's texture, not a picture you're meant to look at.
  */
-const BACKDROP =
-  "https://lh3.googleusercontent.com/aida/AEtjO1UmxMeYzkC7wKG-Qtx-_uFP0tKEtW0eKuVgj248Ps26c3AhIPBehHnmZRgfuS9fQE5dW9k7E4qQ25mU3ysNnxLbrPqwyVzp8DC8aiM6HewqUVl8parreztHAZRFwlMZ5DG5hGdJk8z1gFfbZpXvp9gXw4tkZHxH-XAaWtgVsv9J5ndKgs0bGh_Y9MB7Uca5FQ_GmBr85DLULrzgh94Ob_0BCo9CLypWO3VZ2iCZ8bh1lTlQb9tRgAbqFsV8";
+const BACKDROP = "/auth-backdrop.jpg";
 
 const POINTS = [
   {

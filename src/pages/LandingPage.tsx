@@ -4,15 +4,8 @@ import { Icon, cx } from "@/ui/kit";
 
 const CONTACT_EMAIL = "info@sentrihq.com";
 
-/**
- * Artwork from the Stitch design.
- *
- * WARNING: these point at Google's Stitch CDN, which is temporary — the URLs
- * will stop working at some point and the images will vanish from the live
- * site. Save the files into `public/` and change these to "/hero.png" etc.
- */
-const HERO_IMAGE =
-  "https://lh3.googleusercontent.com/aida-public/AB6AXuDUXJVxWL5ap0iTFwhj1kVj7oHCGOR-smXX3Pt0FHDeRc1BwRpSVTEQbpFY-FTrIxfEoipLkIRpv9pNthCLgPyrWUjp_WRea0xiu3h9KNYRLstVXkAkRpbugvwz5cAZqxUJRTDiH-3McJkyebgK2Kepa0dBROM-nF331f3fkjDwjq8OHylnN84njSG4o5BvaS5r90iAu5kHHhLGk7Ge-McG2PxgN28Yj0jI6pYslmR0EdyqeUlDszP5YA";
+/** Served from public/. Local file, so nothing to expire and nothing to fetch. */
+const HERO_IMAGE = "/hero.jpg";
 
 /** "illustration" uses the artwork above; "preview" uses the drawn dashboard. */
 const HERO_VISUAL: "illustration" | "preview" = "illustration";
@@ -150,11 +143,13 @@ function Hero() {
 
 function HeroIllustration() {
   return (
-    <div className="aspect-square w-full overflow-hidden rounded-panel border border-line bg-canvas md:aspect-video lg:aspect-square">
+    <div className="aspect-[3/2] w-full overflow-hidden rounded-panel border border-line bg-canvas shadow-pop">
       <img
         src={HERO_IMAGE}
-        alt="A government contract document with an official seal"
+        alt="A business owner reviewing her contract pipeline in SentriBiD"
         className="h-full w-full object-cover"
+        width={1264}
+        height={848}
         loading="eager"
       />
     </div>
