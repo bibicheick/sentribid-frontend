@@ -1,155 +1,340 @@
-// src/pages/PipelinePage.tsx
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { api } from "@/lib/api";
+import Page from "@/components/Page";
+import {
+  Alert,
+  Badge,
+  Card,
+  EmptyState,
+  Icon,
+  LinkButton,
+  Segmented,
+  SkeletonRows,
+  cx,
+} from "@/ui/kit";
+import {
+  clamp,
+  deadlineLabel,
+  deadlineTone,
+  percentLabel,
+  scoreTone,
+  shortDate,
+  toPercent,
+} from "@/lib/format";
 
 type Card = Record<string, any>;
-type Pipeline = Record<string, Card[]>;
+type Board = Record<string, Card[]>;
 
+/** Backend stage keys, with names a non-expert reads without translating. */
 const STAGES = [
-  { key: "identified", label: "Identified", icon: "🔍", color: "#95a5a6" },
-  { key: "qualified", label: "Qualified", icon: "✅", color: "#3498db" },
-  { key: "capture", label: "Capture", icon: "🎯", color: "#9b59b6" },
-  { key: "proposal", label: "Proposal", icon: "📝", color: "#f39c12" },
-  { key: "submitted", label: "Submitted", icon: "📤", color: "#e67e22" },
-  { key: "won", label: "Won", icon: "🏆", color: "#28b44c" },
-  { key: "lost", label: "Lost", icon: "❌", color: "#e74c3c" },
-];
+  { key: "identified", label: "Found", accent: "bg-neutral-solid" },
+  { key: "qualified", label: "Worth bidding", accent: "bg-brand-500" },
+  { key: "capture", label: "Getting ready", accent: "bg-brand-600" },
+  { key: "proposal", label: "Writing proposal", accent: "bg-warn-solid" },
+  { key: "submitted", label: "Submitted", accent: "bg-warn-solid" },
+  { key: "won", label: "Won", accent: "bg-good-solid" },
+  { key: "lost", label: "Lost", accent: "bg-neutral-line" },
+] as const;
+
+type StageKey = (typeof STAGES)[number]["key"];
 
 export default function PipelinePage() {
-  const navigate = useNavigate();
-  const [pipeline, setPipeline] = useState<Pipeline>({});
-  const [stats, setStats] = useState<Record<string, number>>({});
+  const [board, setBoard] = useState<Board>({});
+  const [view, setView] = useState<"board" | "list">("board");
   const [loading, setLoading] = useState(true);
-  const [dragItem, setDragItem] = useState<Card | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [dragging, setDragging] = useState<Card | null>(null);
+  const [overStage, setOverStage] = useState<string | null>(null);
 
-  async function loadPipeline() {
+  async function load() {
     try {
       const r = await api.get("/discovery/pipeline");
-      setPipeline(r.data.pipeline || {});
-      setStats(r.data.stats || {});
-    } catch (e) { console.error(e); }
-    finally { setLoading(false); }
+      setBoard(r.data?.pipeline ?? {});
+      setErr(null);
+    } catch {
+      setErr("We couldn't load your pipeline. Try refreshing.");
+    } finally {
+      setLoading(false);
+    }
   }
 
-  useEffect(() => { loadPipeline(); }, []);
+  useEffect(() => {
+    void load();
+  }, []);
 
-  async function moveCard(card: Card, newStage: string) {
-    if (card.pipeline_stage === newStage) return;
+  const all = useMemo(() => Object.values(board).flat(), [board]);
+  const active = useMemo(
+    () => all.filter((c) => !["won", "lost"].includes(String(c.pipeline_stage))),
+    [all]
+  );
+
+  async function move(card: Card, to: StageKey) {
+    const from = String(card.pipeline_stage || "identified");
+    if (from === to) return;
+
+    // Move it on screen first — the request is a formality the user shouldn't wait on.
+    setBoard((prev) => {
+      const next = { ...prev };
+      next[from] = (next[from] ?? []).filter((c) => c.id !== card.id);
+      next[to] = [...(next[to] ?? []), { ...card, pipeline_stage: to }];
+      return next;
+    });
+
     try {
-      await api.put(`/discovery/pipeline/${card.id}`, { stage: newStage });
-      // Optimistic update
-      const old = card.pipeline_stage || "identified";
-      setPipeline(prev => {
-        const updated = { ...prev };
-        updated[old] = (updated[old] || []).filter(c => c.id !== card.id);
-        updated[newStage] = [...(updated[newStage] || []), { ...card, pipeline_stage: newStage }];
-        return updated;
-      });
-    } catch (e) { console.error(e); loadPipeline(); }
+      await api.put(`/discovery/pipeline/${card.id}`, { stage: to });
+    } catch {
+      setErr("That move didn't save. Reloading the board.");
+      void load();
+    }
   }
 
-  function handleDragStart(card: Card) { setDragItem(card); }
-  function handleDragOver(e: React.DragEvent) { e.preventDefault(); }
-  function handleDrop(stage: string) {
-    if (dragItem) { moveCard(dragItem, stage); setDragItem(null); }
-  }
-
-  if (loading) return <div style={page}><div style={{ ...shell, display: "grid", placeItems: "center", minHeight: "60vh" }}><div style={{ opacity: 0.5 }}>Loading pipeline...</div></div></div>;
+  const summary =
+    "Every contract you're tracking, from the moment you spot it to the day it's won or lost. Drag a card to move it along.";
 
   return (
-    <div style={page}>
-      <div style={{ ...shell, width: "min(1400px,calc(100% - 32px))" }}>
-        {/* Header */}
-        <div style={topBar}>
-          <div>
-            <div style={{ fontWeight: 950, fontSize: 18 }}>📊 Capture Pipeline</div>
-            <div style={{ opacity: 0.6, fontSize: 12 }}>{stats.total || 0} opportunities tracked</div>
-          </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={() => navigate("/discover")} style={btn}>Discover</button>
-            <button onClick={() => navigate("/sam-search")} style={btn}>SAM Search</button>
-            <button onClick={() => navigate("/bids")} style={btn}>Bids</button>
-          </div>
-        </div>
+    <Page
+      title="Pipeline"
+      summary={summary}
+      wide
+      actions={
+        <Segmented<"board" | "list">
+          value={view}
+          onChange={setView}
+          options={[
+            { value: "board", label: "Board" },
+            { value: "list", label: "List" },
+          ]}
+        />
+      }
+    >
+      {err ? (
+        <Alert className="mb-gap" onDismiss={() => setErr(null)}>
+          {err}
+        </Alert>
+      ) : null}
 
-        {/* Stats */}
-        <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-          {STAGES.map(s => (
-            <div key={s.key} style={{ padding: "6px 14px", borderRadius: 20, border: `1px solid ${s.color}33`, background: `${s.color}11`, fontSize: 12, fontWeight: 700 }}>
-              <span style={{ color: s.color }}>{s.icon} {s.label}</span>
-              <span style={{ marginLeft: 6, opacity: 0.7 }}>{(pipeline[s.key] || []).length}</span>
-            </div>
-          ))}
-        </div>
+      {!loading && all.length > 0 ? (
+        <p className="mb-5 text-meta text-muted">
+          {active.length} active · {board.won?.length ?? 0} won · {board.lost?.length ?? 0} lost
+        </p>
+      ) : null}
 
-        {/* Kanban Board */}
-        <div style={{ display: "grid", gridTemplateColumns: `repeat(${STAGES.length}, minmax(160px, 1fr))`, gap: 10, marginTop: 14, overflowX: "auto" }}>
-          {STAGES.map(stage => (
-            <div
-              key={stage.key}
-              onDragOver={handleDragOver}
-              onDrop={() => handleDrop(stage.key)}
-              style={{
-                borderRadius: 16, border: `1px solid ${stage.color}22`,
-                background: `linear-gradient(180deg, ${stage.color}08, transparent)`,
-                minHeight: 300, padding: 8,
-              }}
-            >
-              {/* Column Header */}
-              <div style={{ padding: "8px 10px", borderRadius: 12, background: `${stage.color}15`, marginBottom: 8, textAlign: "center" }}>
-                <div style={{ fontSize: 16 }}>{stage.icon}</div>
-                <div style={{ fontSize: 11, fontWeight: 800, color: stage.color }}>{stage.label}</div>
-                <div style={{ fontSize: 10, opacity: 0.5 }}>{(pipeline[stage.key] || []).length}</div>
-              </div>
-
-              {/* Cards */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {(pipeline[stage.key] || []).map(card => (
-                  <div
-                    key={card.id}
-                    draggable
-                    onDragStart={() => handleDragStart(card)}
-                    onClick={() => navigate(`/opportunities/${card.id}`)}
-                    style={{
-                      padding: 10, borderRadius: 12,
-                      border: "1px solid rgba(255,255,255,.10)",
-                      background: "rgba(255,255,255,.05)",
-                      cursor: "grab", fontSize: 11,
-                      transition: "all .15s",
-                    }}
-                    onMouseEnter={e => { (e.target as HTMLElement).style.borderColor = `${stage.color}55`; }}
-                    onMouseLeave={e => { (e.target as HTMLElement).style.borderColor = "rgba(255,255,255,.10)"; }}
-                  >
-                    <div style={{ fontWeight: 800, fontSize: 12, lineHeight: 1.3, marginBottom: 4 }}>
-                      {card.title?.substring(0, 50)}{(card.title?.length || 0) > 50 ? "..." : ""}
+      {loading ? (
+        <Card>
+          <SkeletonRows rows={5} />
+        </Card>
+      ) : all.length === 0 ? (
+        <Card padded={false}>
+          <EmptyState
+            icon="view_kanban"
+            title="No opportunities yet"
+            body="Search for contracts or upload an RFP, and everything you save lands here."
+            actions={
+              <>
+                <LinkButton to="/find-work" tone="primary">
+                  Find contracts
+                </LinkButton>
+                <LinkButton to="/bids/new">Upload an RFP</LinkButton>
+              </>
+            }
+          />
+        </Card>
+      ) : view === "list" ? (
+        <ListView board={board} />
+      ) : (
+        <div className="-mx-5 overflow-x-auto px-5 pb-4 sm:-mx-8 sm:px-8 lg:-mx-page lg:px-page">
+          <div className="flex min-w-max gap-4">
+            {STAGES.map((stage) => {
+              const cards = board[stage.key] ?? [];
+              const isOver = overStage === stage.key;
+              return (
+                <section
+                  key={stage.key}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setOverStage(stage.key);
+                  }}
+                  onDragLeave={() => setOverStage((s) => (s === stage.key ? null : s))}
+                  onDrop={() => {
+                    if (dragging) void move(dragging, stage.key);
+                    setDragging(null);
+                    setOverStage(null);
+                  }}
+                  className={cx(
+                    "flex w-[268px] shrink-0 flex-col rounded-card transition-colors",
+                    isOver ? "bg-brand-50 ring-2 ring-brand-200" : "bg-sunken"
+                  )}
+                >
+                  <header className="px-3 pt-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <h2 className="text-h3 text-ink">{stage.label}</h2>
+                      <span className="rounded-full bg-white px-2 py-0.5 text-[12px] font-medium tnum text-muted">
+                        {cards.length}
+                      </span>
                     </div>
-                    <div style={{ opacity: 0.6, fontSize: 10 }}>{card.agency_name?.substring(0, 30)}</div>
-                    {card.due_date && <div style={{ color: "#f39c12", fontSize: 10, marginTop: 2 }}>⏰ {card.due_date}</div>}
-                    <div style={{ display: "flex", gap: 4, marginTop: 4, flexWrap: "wrap" }}>
-                      {card.source === "sam.gov" && <span style={tag("#3498db")}>SAM</span>}
-                      {card.naics_code && <span style={tag("#9b59b6")}>{card.naics_code}</span>}
-                      {card.has_analysis && <span style={tag("#28b44c")}>Analyzed</span>}
-                      {card.has_war_room && <span style={tag("#e74c3c")}>War Room</span>}
-                      {card.fit_score && <span style={tag(card.fit_score >= 70 ? "#28b44c" : "#f39c12")}>{card.fit_score}%</span>}
-                    </div>
+                    <div className={cx("mt-2.5 h-0.5 rounded-full", stage.accent)} />
+                  </header>
+
+                  <div className="flex flex-1 flex-col gap-2.5 p-3">
+                    {cards.length === 0 ? (
+                      <p className="py-8 text-center text-meta text-faint">Nothing here</p>
+                    ) : (
+                      cards.map((c) => (
+                        <BoardCard
+                          key={c.id}
+                          card={c}
+                          stageKey={stage.key}
+                          onDragStart={() => setDragging(c)}
+                          onDragEnd={() => {
+                            setDragging(null);
+                            setOverStage(null);
+                          }}
+                          onMove={(to) => move(c, to)}
+                        />
+                      ))
+                    )}
                   </div>
-                ))}
-              </div>
-            </div>
-          ))}
+                </section>
+              );
+            })}
+          </div>
         </div>
-      </div>
-    </div>
+      )}
+    </Page>
   );
 }
 
-const tag = (color: string): React.CSSProperties => ({
-  fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 6,
-  background: `${color}22`, color, whiteSpace: "nowrap",
-});
+/* ── Board card ───────────────────────────────────────────────────────── */
 
-const page: React.CSSProperties = { minHeight: "100vh", background: "radial-gradient(1200px 800px at 20% 12%,rgba(122,63,255,.30),transparent 55%),radial-gradient(900px 650px at 78% 28%,rgba(255,185,56,.18),transparent 55%),linear-gradient(180deg,#060712,#0B1020)", color: "rgba(255,255,255,.92)", fontFamily: "ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial" };
-const shell: React.CSSProperties = { width: "min(1100px,calc(100% - 48px))", margin: "0 auto", padding: "28px 0 60px" };
-const topBar: React.CSSProperties = { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px", border: "1px solid rgba(255,255,255,.12)", borderRadius: 18, background: "linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.04))", boxShadow: "0 14px 40px rgba(0,0,0,.45)" };
-const btn: React.CSSProperties = { border: "1px solid rgba(255,255,255,.14)", borderRadius: 12, padding: "8px 14px", background: "rgba(255,255,255,.08)", color: "rgba(255,255,255,.9)", fontWeight: 700, cursor: "pointer", fontSize: 12 };
+function BoardCard({
+  card,
+  stageKey,
+  onDragStart,
+  onDragEnd,
+  onMove,
+}: {
+  card: Card;
+  stageKey: StageKey;
+  onDragStart: () => void;
+  onDragEnd: () => void;
+  onMove: (to: StageKey) => void;
+}) {
+  const score = toPercent(card.fit_score);
+  const tone = deadlineTone(card.due_date);
+  const idx = STAGES.findIndex((s) => s.key === stageKey);
+  const prev = idx > 0 ? STAGES[idx - 1] : null;
+  const next = idx < STAGES.length - 1 ? STAGES[idx + 1] : null;
+
+  return (
+    <article
+      draggable
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      className="group cursor-grab rounded-control border border-line bg-surface p-3.5 shadow-card transition-shadow hover:shadow-lift active:cursor-grabbing"
+    >
+      <Link
+        to={`/opportunities/${card.id}`}
+        className="block text-base font-medium leading-5 text-ink transition-colors hover:text-brand-700"
+      >
+        {clamp(card.title || "Untitled", 60)}
+      </Link>
+
+      <p className="mt-1 text-meta text-muted">{clamp(card.agency_name || "No agency", 34)}</p>
+
+      <div className="mt-3 flex items-center justify-between gap-2 border-t border-line-soft pt-2.5">
+        {score !== null ? (
+          <Badge tone={scoreTone(score)}>{percentLabel(score)}</Badge>
+        ) : (
+          <span className="text-meta text-faint">Not scored</span>
+        )}
+        {card.due_date ? (
+          <span
+            className={cx(
+              "inline-flex items-center gap-1 text-meta tnum",
+              tone === "bad" ? "text-bad-ink" : tone === "warn" ? "text-warn-ink" : "text-muted"
+            )}
+          >
+            <Icon name="schedule" className="text-[14px]" />
+            {shortDate(card.due_date)}
+          </span>
+        ) : null}
+      </div>
+
+      {/* Keyboard / touch alternative to dragging */}
+      <div className="mt-0 flex max-h-0 gap-1 overflow-hidden opacity-0 transition-all duration-150 focus-within:mt-2 focus-within:max-h-8 focus-within:opacity-100 group-hover:mt-2 group-hover:max-h-8 group-hover:opacity-100">
+        {prev ? (
+          <button
+            type="button"
+            onClick={() => onMove(prev.key)}
+            title={`Move to ${prev.label}`}
+            className="flex h-6 flex-1 items-center justify-center rounded border border-line text-faint hover:bg-sunken hover:text-body"
+          >
+            <Icon name="chevron_left" className="text-[16px]" />
+          </button>
+        ) : null}
+        {next ? (
+          <button
+            type="button"
+            onClick={() => onMove(next.key)}
+            title={`Move to ${next.label}`}
+            className="flex h-6 flex-1 items-center justify-center rounded border border-line text-faint hover:bg-sunken hover:text-body"
+          >
+            <Icon name="chevron_right" className="text-[16px]" />
+          </button>
+        ) : null}
+      </div>
+    </article>
+  );
+}
+
+/* ── List view ────────────────────────────────────────────────────────── */
+
+function ListView({ board }: { board: Board }) {
+  const rows: Record<string, any>[] = STAGES.flatMap((s) =>
+    (board[s.key] ?? []).map((c) => ({ ...c, _stage: s.label as string }))
+  );
+
+  return (
+    <Card padded={false} className="overflow-hidden">
+      <table className="w-full text-left">
+        <thead>
+          <tr className="border-b border-line bg-raised">
+            <th className="px-card py-3 text-caps uppercase text-muted">Contract</th>
+            <th className="hidden px-card py-3 text-caps uppercase text-muted sm:table-cell">
+              Stage
+            </th>
+            <th className="hidden px-card py-3 text-caps uppercase text-muted md:table-cell">
+              Due
+            </th>
+            <th className="px-card py-3 text-right text-caps uppercase text-muted">Win chance</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-line-soft">
+          {rows.map((r) => (
+            <tr key={r.id} className="transition-colors hover:bg-raised">
+              <td className="px-card py-3.5">
+                <Link
+                  to={`/opportunities/${r.id}`}
+                  className="text-base font-medium text-ink hover:text-brand-700"
+                >
+                  {clamp(r.title || "Untitled", 62)}
+                </Link>
+                <div className="mt-0.5 text-meta text-muted">{r.agency_name || "No agency"}</div>
+              </td>
+              <td className="hidden px-card py-3.5 sm:table-cell">
+                <Badge>{r._stage}</Badge>
+              </td>
+              <td className="hidden px-card py-3.5 text-meta text-muted md:table-cell">
+                {r.due_date ? deadlineLabel(r.due_date) : "—"}
+              </td>
+              <td className="px-card py-3.5 text-right text-base tnum text-ink">
+                {percentLabel(r.fit_score)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </Card>
+  );
+}

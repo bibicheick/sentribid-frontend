@@ -1,56 +1,78 @@
-// src/App.tsx
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Navigate, Route, Routes } from "react-router-dom";
 import RequireAuth from "./components/RequireAuth";
+import AppLayout from "./components/AppLayout";
 
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import OnboardingPage from "./pages/OnboardingPage";
+
+import DashboardPage from "./pages/DashboardPage";
+import FindWorkPage from "./pages/FindWorkPage";
+import PipelinePage from "./pages/PipelinePage";
 import BidsPage from "./pages/BidsPage";
 import NewBidPage from "./pages/NewBidPage";
 import BidDetailsPage from "./pages/BidDetailsPage";
-import ExportPage from "./pages/ExportPage";
-import DiscoverPage from "./pages/DiscoverPage";
+import EditBidPage from "./pages/EditBidPage";
 import OpportunityDetailPage from "./pages/OpportunityDetailPage";
-import ProfilePage from "./pages/ProfilePage";
-import SAMSearchPage from "./pages/SAMSearchPage";
-import PipelinePage from "./pages/PipelinePage";
 import WarRoomPage from "./pages/WarRoomPage";
-import SubcontractScoutPage from "./pages/SubcontractScoutPage";
-import AutopilotPage from "./pages/AutopilotPage";
+import SettingsPage from "./pages/SettingsPage";
+import ExportPage from "./pages/ExportPage";
 
 export default function App() {
   return (
     <Routes>
-      {/* Public */}
+      {/* Signed out */}
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
 
-      {/* Onboarding (requires auth but shown before main app) */}
-      <Route path="/onboarding" element={<RequireAuth><OnboardingPage /></RequireAuth>} />
+      {/* Signed in, but shown without the app shell */}
+      <Route
+        path="/onboarding"
+        element={
+          <RequireAuth>
+            <OnboardingPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/export/:versionId"
+        element={
+          <RequireAuth>
+            <ExportPage />
+          </RequireAuth>
+        }
+      />
 
-      {/* Bids */}
-      <Route path="/bids" element={<RequireAuth><BidsPage /></RequireAuth>} />
-      <Route path="/bids/new" element={<RequireAuth><NewBidPage /></RequireAuth>} />
-      <Route path="/bids/:bidId" element={<RequireAuth><BidDetailsPage /></RequireAuth>} />
-      <Route path="/export/:versionId" element={<RequireAuth><ExportPage /></RequireAuth>} />
+      {/* The app itself */}
+      <Route
+        element={
+          <RequireAuth>
+            <AppLayout />
+          </RequireAuth>
+        }
+      >
+        <Route path="/" element={<DashboardPage />} />
+        <Route path="/find-work" element={<FindWorkPage />} />
+        <Route path="/pipeline" element={<PipelinePage />} />
+        <Route path="/bids" element={<BidsPage />} />
+        <Route path="/bids/new" element={<NewBidPage />} />
+        <Route path="/bids/:bidId" element={<BidDetailsPage />} />
+        <Route path="/bids/:bidId/edit" element={<EditBidPage />} />
+        <Route path="/opportunities/:oppId" element={<OpportunityDetailPage />} />
+        <Route path="/war-room/:oppId" element={<WarRoomPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
+      </Route>
 
-      {/* Discovery */}
-      <Route path="/discover" element={<RequireAuth><DiscoverPage /></RequireAuth>} />
-      <Route path="/opportunities/:oppId" element={<RequireAuth><OpportunityDetailPage /></RequireAuth>} />
-      <Route path="/profile" element={<RequireAuth><ProfilePage /></RequireAuth>} />
+      {/* Old links keep working */}
+      <Route path="/discover" element={<Navigate to="/find-work" replace />} />
+      <Route path="/sam-search" element={<Navigate to="/find-work" replace />} />
+      <Route path="/subcontract-scout" element={<Navigate to="/find-work?tab=partners" replace />} />
+      <Route path="/autopilot" element={<Navigate to="/bids/new" replace />} />
+      <Route path="/profile" element={<Navigate to="/settings" replace />} />
 
-      {/* SAM, Pipeline, War Room, Scout, Autopilot */}
-      <Route path="/sam-search" element={<RequireAuth><SAMSearchPage /></RequireAuth>} />
-      <Route path="/pipeline" element={<RequireAuth><PipelinePage /></RequireAuth>} />
-      <Route path="/war-room/:oppId" element={<RequireAuth><WarRoomPage /></RequireAuth>} />
-      <Route path="/subcontract-scout" element={<RequireAuth><SubcontractScoutPage /></RequireAuth>} />
-      <Route path="/autopilot" element={<RequireAuth><AutopilotPage /></RequireAuth>} />
-
-      {/* Redirects */}
-      <Route path="/" element={<Navigate to="/discover" replace />} />
-      <Route path="*" element={<Navigate to="/discover" replace />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }

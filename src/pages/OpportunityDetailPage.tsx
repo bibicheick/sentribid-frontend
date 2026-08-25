@@ -1,255 +1,603 @@
-// src/pages/OpportunityDetailPage.tsx
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "@/lib/api";
+import Page from "@/components/Page";
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  CardHeading,
+  DescList,
+  DescRow,
+  EmptyState,
+  Icon,
+  SkeletonRows,
+  Spinner,
+  Tabs,
+  cx,
+} from "@/ui/kit";
+import {
+  clamp,
+  deadlineLabel,
+  deadlineTone,
+  formatDate,
+  percentLabel,
+  recommendationLabel,
+  scoreTone,
+  sentence,
+  statusLabel,
+  statusTone,
+  toPercent,
+} from "@/lib/format";
 
-type OppData = Record<string, any>;
+type AnyObj = Record<string, any>;
+type TabKey = "overview" | "requirements" | "compliance";
 
 export default function OpportunityDetailPage() {
   const { oppId } = useParams();
   const navigate = useNavigate();
-  const [opp, setOpp] = useState<OppData | null>(null);
+
+  const [opp, setOpp] = useState<AnyObj | null>(null);
   const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+  const [tab, setTab] = useState<TabKey>("overview");
+
   const [analyzing, setAnalyzing] = useState(false);
   const [converting, setConverting] = useState(false);
+  const [shred, setShred] = useState<AnyObj | null>(null);
   const [shredding, setShredding] = useState(false);
-  const [generatingMatrix, setGeneratingMatrix] = useState(false);
-  const [generatingProposal, setGeneratingProposal] = useState<string | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-  const [shredResult, setShredResult] = useState<any>(null);
-  const [matrixResult, setMatrixResult] = useState<any>(null);
+  const [matrix, setMatrix] = useState<AnyObj | null>(null);
+  const [matrixLoading, setMatrixLoading] = useState(false);
+  const [downloading, setDownloading] = useState<string | null>(null);
 
-  async function loadOpp() {
-    try { setLoading(true); const r = await api.get(`/opportunities/${oppId}`); setOpp(r.data); }
-    catch (e: any) { setErr(e?.response?.data?.detail || "Failed to load"); }
-    finally { setLoading(false); }
+  async function load() {
+    try {
+      setLoading(true);
+      const r = await api.get(`/opportunities/${oppId}`);
+      setOpp(r.data);
+      setErr(null);
+    } catch (e: any) {
+      setErr(e?.response?.data?.detail || "We couldn't load this opportunity.");
+    } finally {
+      setLoading(false);
+    }
   }
 
-  useEffect(() => { loadOpp(); }, [oppId]);
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [oppId]);
 
   async function analyze() {
-    setAnalyzing(true); setErr(null);
-    try { await api.post(`/opportunities/${oppId}/analyze`); loadOpp(); }
-    catch (e: any) { setErr(e?.response?.data?.detail || "Analysis failed"); }
-    finally { setAnalyzing(false); }
+    setAnalyzing(true);
+    try {
+      await api.post(`/opportunities/${oppId}/analyze`);
+      await load();
+    } catch (e: any) {
+      setErr(e?.response?.data?.detail || "The review didn't finish.");
+    } finally {
+      setAnalyzing(false);
+    }
   }
 
   async function convert() {
-    setConverting(true); setErr(null);
-    try { const r = await api.post(`/opportunities/${oppId}/convert`); navigate(`/bids/${r.data.bid_id}`); }
-    catch (e: any) { setErr(e?.response?.data?.detail || "Conversion failed"); }
-    finally { setConverting(false); }
-  }
-
-  async function shredRfp() {
-    setShredding(true); setErr(null);
-    try { const r = await api.post(`/discovery/shred/${oppId}`); setShredResult(r.data); }
-    catch (e: any) { setErr(e?.response?.data?.detail || "Shred failed"); }
-    finally { setShredding(false); }
-  }
-
-  async function generateMatrix() {
-    setGeneratingMatrix(true); setErr(null);
-    try { const r = await api.post(`/discovery/compliance-matrix/${oppId}`); setMatrixResult(r.data); }
-    catch (e: any) { setErr(e?.response?.data?.detail || "Matrix generation failed"); }
-    finally { setGeneratingMatrix(false); }
-  }
-
-  async function downloadProposal(format: string) {
-    setGeneratingProposal(format); setErr(null);
+    setConverting(true);
     try {
-      const r = await api.post(`/opportunities/${oppId}/generate-proposal`, { format }, { responseType: "blob" });
-      const url = URL.createObjectURL(r.data);
-      const a = document.createElement("a"); a.href = url; a.download = `Proposal-${opp?.opp_code || oppId}.${format}`; a.click();
-      URL.revokeObjectURL(url);
-    } catch (e: any) { setErr("Proposal generation failed"); }
-    finally { setGeneratingProposal(null); }
+      const r = await api.post(`/opportunities/${oppId}/convert`);
+      navigate(`/bids/${r.data.bid_id}`);
+    } catch (e: any) {
+      setErr(e?.response?.data?.detail || "We couldn't turn this into a bid.");
+    } finally {
+      setConverting(false);
+    }
   }
 
-  if (loading) return <div style={page}><div style={{ ...shell, display: "grid", placeItems: "center", minHeight: "60vh" }}><div style={{ opacity: 0.5 }}>Loading...</div></div></div>;
-  if (!opp) return <div style={page}><div style={shell}><div style={errBox}>Opportunity not found</div></div></div>;
+  async function runShred() {
+    setShredding(true);
+    try {
+      const r = await api.post(`/discovery/shred/${oppId}`);
+      setShred(r.data);
+    } catch (e: any) {
+      setShred({ error: e?.response?.data?.detail || "Couldn't pull out the requirements." });
+    } finally {
+      setShredding(false);
+    }
+  }
 
-  const hasAnalysis = !!opp.ai_summary;
-  let analysis: Record<string, any> = {};
-  try {
-    if (opp.ai_summary) analysis.summary = typeof opp.ai_summary === "string" ? JSON.parse(opp.ai_summary) : opp.ai_summary;
-    if (opp.ai_requirements) analysis.requirements = typeof opp.ai_requirements === "string" ? JSON.parse(opp.ai_requirements) : opp.ai_requirements;
-    if (opp.ai_risk_flags) analysis.risks = typeof opp.ai_risk_flags === "string" ? JSON.parse(opp.ai_risk_flags) : opp.ai_risk_flags;
-    if (opp.ai_bid_strategy) analysis.strategy = typeof opp.ai_bid_strategy === "string" ? JSON.parse(opp.ai_bid_strategy) : opp.ai_bid_strategy;
-  } catch {}
+  async function runMatrix() {
+    setMatrixLoading(true);
+    try {
+      const r = await api.post(`/discovery/compliance-matrix/${oppId}`);
+      setMatrix(r.data);
+    } catch (e: any) {
+      setMatrix({ error: e?.response?.data?.detail || "Couldn't build the checklist." });
+    } finally {
+      setMatrixLoading(false);
+    }
+  }
+
+  async function proposal(format: "pdf" | "docx") {
+    setDownloading(format);
+    try {
+      const r = await api.post(
+        `/opportunities/${oppId}/generate-proposal`,
+        { format },
+        { responseType: "blob" }
+      );
+      const url = URL.createObjectURL(r.data);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${opp?.opp_code || "proposal"}.${format}`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      setErr(e?.response?.data?.detail || "The proposal didn't generate.");
+    } finally {
+      setDownloading(null);
+    }
+  }
+
+  if (loading) {
+    return (
+      <Page
+        title="Loading"
+        summary="Fetching this opportunity."
+        back={{ to: "/find-work", label: "Back to Find Work" }}
+      >
+        <Card>
+          <SkeletonRows rows={5} />
+        </Card>
+      </Page>
+    );
+  }
+
+  if (!opp) {
+    return (
+      <Page
+        title="Opportunity not found"
+        summary="It may have been removed, or the link is wrong."
+        back={{ to: "/find-work", label: "Back to Find Work" }}
+      >
+        <Card padded={false}>
+          <EmptyState icon="search_off" title="Nothing here" body={err ?? undefined} />
+        </Card>
+      </Page>
+    );
+  }
+
+  const score = toPercent(opp.fit_score ?? opp.ai_confidence_score);
+  const rec = recommendationLabel(opp.ai_bid_recommendation);
+  const requirements: string[] = toArray(opp.ai_requirements);
+  const risks: string[] = toArray(opp.ai_risk_flags);
+  const attachments: AnyObj[] = Array.isArray(opp.attachments) ? opp.attachments : [];
 
   return (
-    <div style={page}>
-      <div style={shell}>
-        {/* Header */}
-        <div style={topBar}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 900, fontSize: 16, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{opp.title}</div>
-            <div style={{ fontSize: 12, opacity: 0.6 }}>{opp.agency_name} • {opp.opp_code}</div>
+    <Page
+      title={opp.title || "Untitled opportunity"}
+      summary="What the agency is asking for, how well it fits you, and what it would take to bid."
+      back={{ to: "/find-work", label: "Back to Find Work" }}
+      eyebrow={
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge tone={statusTone(opp.status)}>{statusLabel(opp.status)}</Badge>
+          {opp.opp_code ? (
+            <span className="font-mono text-[11px] text-faint">{opp.opp_code}</span>
+          ) : null}
+        </div>
+      }
+      actions={
+        <>
+          <Button loading={analyzing} onClick={analyze} icon="auto_awesome">
+            {opp.ai_summary ? "Review again" : "Review this"}
+          </Button>
+          {opp.converted_bid_id ? (
+            <Button tone="primary" onClick={() => navigate(`/bids/${opp.converted_bid_id}`)}>
+              Open the bid
+            </Button>
+          ) : (
+            <Button tone="primary" loading={converting} onClick={convert}>
+              Turn into a bid
+            </Button>
+          )}
+        </>
+      }
+    >
+      {err ? (
+        <Alert className="mb-gap" onDismiss={() => setErr(null)}>
+          {err}
+        </Alert>
+      ) : null}
+
+      <Tabs<TabKey>
+        value={tab}
+        onChange={setTab}
+        options={[
+          { value: "overview", label: "Overview" },
+          { value: "requirements", label: "Requirements" },
+          { value: "compliance", label: "Can we meet it?" },
+        ]}
+        className="mb-gap"
+      />
+
+      {tab === "overview" ? (
+        <div className="grid grid-cols-1 gap-gap lg:grid-cols-3">
+          <div className="space-y-gap lg:col-span-2">
+            <Card>
+              <CardHeading title="Is this a fit?" />
+              <div className="mt-5 flex flex-col gap-5 sm:flex-row sm:items-center">
+                <div className="shrink-0 sm:w-32">
+                  <div
+                    className={cx(
+                      "text-display tnum",
+                      score === null
+                        ? "text-faint"
+                        : scoreTone(score) === "good"
+                        ? "text-good-solid"
+                        : scoreTone(score) === "warn"
+                        ? "text-warn-ink"
+                        : "text-ink"
+                    )}
+                  >
+                    {score === null ? "—" : percentLabel(score)}
+                  </div>
+                  <div className="text-meta text-muted">win chance</div>
+                </div>
+                <div className="border-line-soft sm:border-l sm:pl-5">
+                  <p className="text-h3">
+                    {rec ?? (score === null ? "Not reviewed yet" : "No recommendation yet")}
+                  </p>
+                  <p className="mt-1 text-base text-muted">
+                    {opp.ai_summary
+                      ? clamp(opp.ai_summary, 220)
+                      : "Run a review and we'll read the solicitation and score it against your profile."}
+                  </p>
+                </div>
+              </div>
+            </Card>
+
+            {opp.ai_bid_strategy ? (
+              <Card>
+                <CardHeading title="How you'd win it" />
+                <p className="mt-4 whitespace-pre-wrap text-base leading-relaxed text-body">
+                  {opp.ai_bid_strategy}
+                </p>
+              </Card>
+            ) : null}
+
+            {risks.length > 0 ? (
+              <Card>
+                <CardHeading title="Watch out for" />
+                <ul className="mt-4 space-y-2.5">
+                  {risks.map((r, i) => (
+                    <li key={i} className="flex gap-2.5 text-base text-body">
+                      <Icon name="warning" className="mt-0.5 text-[16px] text-warn-solid" />
+                      {r}
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+            ) : null}
+
+            <Card>
+              <CardHeading
+                title="Proposal"
+                hint="Generate a first draft from the solicitation and your profile."
+              />
+              <div className="mt-5 flex flex-wrap gap-3">
+                <Button
+                  icon="picture_as_pdf"
+                  loading={downloading === "pdf"}
+                  onClick={() => proposal("pdf")}
+                >
+                  Download as PDF
+                </Button>
+                <Button
+                  icon="description"
+                  loading={downloading === "docx"}
+                  onClick={() => proposal("docx")}
+                >
+                  Download as Word
+                </Button>
+              </div>
+            </Card>
           </div>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            <button onClick={() => navigate("/discover")} style={btn}>← Discover</button>
-            <button onClick={() => navigate("/profile")} style={btn}>👤 Profile</button>
+
+          <div className="space-y-gap">
+            <Card>
+              <CardHeading title="The details" />
+              <div className="mt-4">
+                <DescList>
+                  <DescRow label="Agency">{opp.agency_name || "—"}</DescRow>
+                  <DescRow label="Closes">
+                    {opp.due_date ? (
+                      <>
+                        <div>{formatDate(opp.due_date)}</div>
+                        <div
+                          className={cx(
+                            "text-meta",
+                            deadlineTone(opp.due_date) === "bad" ? "text-bad-ink" : "text-muted"
+                          )}
+                        >
+                          {deadlineLabel(opp.due_date)}
+                        </div>
+                      </>
+                    ) : (
+                      "—"
+                    )}
+                  </DescRow>
+                  {opp.naics_code ? (
+                    <DescRow label="Industry code">{opp.naics_code}</DescRow>
+                  ) : null}
+                  {opp.set_aside || opp.set_aside_type ? (
+                    <DescRow label="Set-aside">{opp.set_aside || opp.set_aside_type}</DescRow>
+                  ) : null}
+                  {opp.solicitation_number ? (
+                    <DescRow label="Solicitation">
+                      <span className="font-mono text-[12px]">{opp.solicitation_number}</span>
+                    </DescRow>
+                  ) : null}
+                  {opp.source || opp.source_type ? (
+                    <DescRow label="Source">{sentence(opp.source ?? opp.source_type)}</DescRow>
+                  ) : null}
+                </DescList>
+              </div>
+            </Card>
+
+            {opp.contact_name || opp.contact_email ? (
+              <Card>
+                <CardHeading title="Who to ask" />
+                <div className="mt-4">
+                  {opp.contact_name ? (
+                    <p className="text-base text-ink">{opp.contact_name}</p>
+                  ) : null}
+                  {opp.contact_email ? (
+                    <a
+                      href={`mailto:${opp.contact_email}`}
+                      className="mt-0.5 block break-all text-base text-brand-600 hover:text-brand-700"
+                    >
+                      {opp.contact_email}
+                    </a>
+                  ) : null}
+                </div>
+              </Card>
+            ) : null}
+
+            {attachments.length > 0 ? (
+              <Card>
+                <CardHeading title="Documents" />
+                <ul className="mt-4 space-y-2">
+                  {attachments.map((a, i) => (
+                    <li key={i}>
+                      <a
+                        href={a.url ?? a.link ?? "#"}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-2.5 text-base text-body hover:text-brand-700"
+                      >
+                        <Icon name="draft" className="text-[18px] text-faint" />
+                        <span className="truncate">{a.name ?? a.filename ?? `File ${i + 1}`}</span>
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+            ) : null}
+
+            <Card>
+              <CardHeading title="Go deeper" />
+              <Button
+                className="mt-4"
+                block
+                icon="neurology"
+                onClick={() => navigate(`/war-room/${oppId}`)}
+              >
+                Size up the competition
+              </Button>
+            </Card>
           </div>
         </div>
+      ) : null}
 
-        {err && <div style={errBox}>{err}</div>}
+      {tab === "requirements" ? (
+        <div className="max-w-3xl">
+          {requirements.length > 0 && !shred ? (
+            <Card className="mb-gap">
+              <CardHeading
+                title="What the agency asked for"
+                hint="Pulled out of the solicitation during the review."
+              />
+              <ul className="mt-5 space-y-3">
+                {requirements.map((r, i) => (
+                  <li key={i} className="flex gap-3 text-base text-body">
+                    <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-500" />
+                    {r}
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          ) : null}
 
-        {/* Action Buttons */}
-        <div style={{ display: "flex", gap: 6, marginTop: 12, flexWrap: "wrap" }}>
-          {!hasAnalysis && <button onClick={analyze} disabled={analyzing} style={btnGold}>{analyzing ? "🧠 Analyzing..." : "🧠 AI Analyze"}</button>}
-          {hasAnalysis && (
+          {shredding ? (
+            <Card>
+              <div className="flex items-center gap-3">
+                <Spinner className="text-brand-600" />
+                <p className="text-base text-body">Reading every page…</p>
+              </div>
+            </Card>
+          ) : shred?.error ? (
+            <Alert tone="warn">{String(shred.error)}</Alert>
+          ) : shred ? (
             <>
-              <button onClick={convert} disabled={converting} style={btnGold}>{converting ? "..." : "💰 Convert to Bid"}</button>
-              <button onClick={() => downloadProposal("pdf")} disabled={!!generatingProposal} style={btn}>{generatingProposal === "pdf" ? "..." : "📄 Proposal PDF"}</button>
-              <button onClick={() => downloadProposal("docx")} disabled={!!generatingProposal} style={btn}>{generatingProposal === "docx" ? "..." : "📝 Proposal Word"}</button>
+              <p className="mb-4 text-meta text-muted">
+                {shred.total_requirements_count ?? toArray(shred.requirements).length} requirements
+                found
+              </p>
+              <Card>
+                <ul className="divide-y divide-line-soft">
+                  {toArray(shred.requirements).map((r: any, i: number) => (
+                    <li key={i} className="py-3 first:pt-0 last:pb-0">
+                      <p className="text-base text-body">
+                        {typeof r === "string" ? r : r.requirement ?? r.text ?? JSON.stringify(r)}
+                      </p>
+                      {typeof r === "object" && (r.section || r.page) ? (
+                        <p className="mt-0.5 text-meta text-faint">
+                          {[r.section, r.page ? `p.${r.page}` : null].filter(Boolean).join(" · ")}
+                        </p>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+
+              {toArray(shred.evaluation_factors).length > 0 ? (
+                <Card className="mt-gap">
+                  <CardHeading
+                    title="How they'll score you"
+                    hint="These are the things the evaluators actually mark against."
+                  />
+                  <ul className="mt-4 space-y-2.5">
+                    {toArray(shred.evaluation_factors).map((f: any, i: number) => (
+                      <li key={i} className="flex gap-2.5 text-base text-body">
+                        <Icon name="check_circle" className="mt-0.5 text-[16px] text-brand-500" />
+                        {typeof f === "string" ? f : f.factor ?? JSON.stringify(f)}
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
+              ) : null}
             </>
-          )}
-          <button onClick={shredRfp} disabled={shredding} style={btn}>{shredding ? "Shredding..." : "🔪 Shred RFP"}</button>
-          <button onClick={generateMatrix} disabled={generatingMatrix} style={btn}>{generatingMatrix ? "Generating..." : "✅ Compliance Matrix"}</button>
-          <button onClick={() => navigate(`/war-room/${oppId}`)} style={{ ...btnGold, background: "linear-gradient(135deg,rgba(231,76,60,.15),rgba(243,156,18,.10))" }}>⚔️ War Room</button>
-        </div>
-
-        {/* Opportunity Info */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 14 }}>
-          <div style={card}>
-            <div style={cardTitle}>📋 Details</div>
-            <div style={infoGrid}>
-              <InfoRow l="Status" v={opp.status} />
-              <InfoRow l="NAICS" v={opp.naics_code} />
-              <InfoRow l="Set-Aside" v={opp.set_aside || opp.set_aside_type || "Open"} />
-              <InfoRow l="Due Date" v={opp.due_date ? new Date(opp.due_date).toLocaleDateString() : "—"} />
-              <InfoRow l="Source" v={opp.source || opp.source_type || "manual"} />
-              <InfoRow l="Solicitation" v={opp.solicitation_number || "—"} />
-              <InfoRow l="Contact" v={opp.contact_name || "—"} />
-              <InfoRow l="Email" v={opp.contact_email || "—"} />
-            </div>
-          </div>
-          {hasAnalysis && (
-            <div style={card}>
-              <div style={cardTitle}>🧠 AI Recommendation</div>
-              <div style={{ textAlign: "center", marginTop: 10 }}>
-                <div style={{
-                  display: "inline-block", padding: "8px 24px", borderRadius: 20, fontWeight: 900, fontSize: 16,
-                  background: opp.ai_bid_recommendation === "bid" ? "rgba(40,180,76,.15)" : opp.ai_bid_recommendation === "no_bid" ? "rgba(231,76,60,.15)" : "rgba(243,156,18,.15)",
-                  color: opp.ai_bid_recommendation === "bid" ? "#28b44c" : opp.ai_bid_recommendation === "no_bid" ? "#e74c3c" : "#f39c12",
-                }}>{opp.ai_bid_recommendation?.toUpperCase() || "—"}</div>
-                <div style={{ fontSize: 24, fontWeight: 950, marginTop: 8 }}>{opp.ai_confidence_score}%</div>
-                <div style={{ fontSize: 11, opacity: 0.5 }}>confidence score</div>
-              </div>
-            </div>
+          ) : (
+            <Card padded={false}>
+              <EmptyState
+                icon="fact_check"
+                title="Pull out every requirement"
+                body="We'll go through the solicitation line by line and list everything you'd have to satisfy."
+                actions={
+                  <Button tone="primary" onClick={runShred}>
+                    Read the solicitation
+                  </Button>
+                }
+              />
+            </Card>
           )}
         </div>
+      ) : null}
 
-        {/* AI Analysis */}
-        {hasAnalysis && analysis.summary && (
-          <div style={{ ...card, marginTop: 12 }}>
-            <div style={cardTitle}>📊 AI Analysis Summary</div>
-            <div style={{ fontSize: 13, lineHeight: 1.6, marginTop: 8 }}>
-              {typeof analysis.summary === "string" ? analysis.summary : JSON.stringify(analysis.summary, null, 2)}
-            </div>
-          </div>
-        )}
-
-        {/* Shredded RFP */}
-        {shredResult && !shredResult.error && (
-          <div style={{ ...card, marginTop: 12 }}>
-            <div style={cardTitle}>🔪 Shredded RFP ({shredResult.total_requirements_count || shredResult.requirements?.length || 0} requirements)</div>
-            {shredResult.evaluation_factors?.length > 0 && (
-              <div style={{ marginTop: 10 }}>
-                <div style={{ fontWeight: 800, fontSize: 12, marginBottom: 4 }}>Evaluation Factors:</div>
-                {shredResult.evaluation_factors.map((f: any, i: number) => (
-                  <div key={i} style={{ fontSize: 12, padding: "4px 8px", background: "rgba(155,89,182,.08)", borderRadius: 8, marginBottom: 4 }}>
-                    <b>{f.factor}</b> ({f.weight}) — {f.description}
+      {tab === "compliance" ? (
+        <div className="max-w-3xl">
+          {matrixLoading ? (
+            <Card>
+              <div className="flex items-center gap-3">
+                <Spinner className="text-brand-600" />
+                <p className="text-base text-body">Checking each requirement against your profile…</p>
+              </div>
+            </Card>
+          ) : matrix?.error ? (
+            <Alert tone="warn">{String(matrix.error)}</Alert>
+          ) : matrix ? (
+            <>
+              <div className="mb-gap grid grid-cols-2 gap-gap">
+                <Card>
+                  <div className="text-meta text-muted">Requirements you meet</div>
+                  <div className="mt-2 text-stat tnum text-ink">
+                    {percentLabel(matrix.compliance_score)}
                   </div>
-                ))}
-              </div>
-            )}
-            {shredResult.requirements?.slice(0, 15).map((r: any, i: number) => (
-              <div key={i} style={{ fontSize: 11, padding: "4px 8px", borderBottom: "1px solid rgba(255,255,255,.06)" }}>
-                <b>{r.id}</b> [{r.type}] {r.requirement?.substring(0, 120)}{(r.requirement?.length || 0) > 120 ? "..." : ""}
-                {r.mandatory && <span style={{ color: "#e74c3c", fontSize: 9, marginLeft: 4 }}>MANDATORY</span>}
-              </div>
-            ))}
-            {(shredResult.requirements?.length || 0) > 15 && <div style={{ fontSize: 11, opacity: 0.5, marginTop: 4 }}>+ {shredResult.requirements.length - 15} more requirements</div>}
-            {shredResult.risk_flags?.length > 0 && (
-              <div style={{ marginTop: 10 }}>
-                <div style={{ fontWeight: 800, fontSize: 12, color: "#e74c3c", marginBottom: 4 }}>⚠️ Risk Flags:</div>
-                {shredResult.risk_flags.map((f: string, i: number) => (
-                  <div key={i} style={{ fontSize: 12, color: "rgba(231,76,60,.8)", padding: "2px 0" }}>• {f}</div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Compliance Matrix */}
-        {matrixResult && !matrixResult.error && (
-          <div style={{ ...card, marginTop: 12 }}>
-            <div style={cardTitle}>✅ Compliance Matrix — Score: {matrixResult.compliance_score || 0}%</div>
-            {matrixResult.summary && (
-              <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
-                <Stat label="Met" value={matrixResult.summary.met} color="#28b44c" />
-                <Stat label="Partial" value={matrixResult.summary.partial} color="#f39c12" />
-                <Stat label="Gap" value={matrixResult.summary.gap} color="#e74c3c" />
-                <Stat label="N/A" value={matrixResult.summary.not_applicable} color="#95a5a6" />
-              </div>
-            )}
-            {matrixResult.matrix?.slice(0, 20).map((m: any, i: number) => (
-              <div key={i} style={{ display: "grid", gridTemplateColumns: "60px 1fr 120px 80px", gap: 8, padding: "6px 4px", borderBottom: "1px solid rgba(255,255,255,.06)", fontSize: 11, alignItems: "center" }}>
-                <span style={{ fontWeight: 800, opacity: 0.6 }}>{m.req_id}</span>
-                <span>{m.requirement?.substring(0, 80)}</span>
-                <span style={{ opacity: 0.6 }}>{m.proposal_section?.substring(0, 20)}</span>
-                <span style={{
-                  fontWeight: 700, fontSize: 10, textAlign: "center", padding: "2px 6px", borderRadius: 8,
-                  background: m.status === "Met" ? "rgba(40,180,76,.15)" : m.status === "Gap" ? "rgba(231,76,60,.15)" : "rgba(243,156,18,.15)",
-                  color: m.status === "Met" ? "#28b44c" : m.status === "Gap" ? "#e74c3c" : "#f39c12",
-                }}>{m.status}</span>
-              </div>
-            ))}
-            {matrixResult.critical_gaps?.length > 0 && (
-              <div style={{ marginTop: 10 }}>
-                <div style={{ fontWeight: 800, fontSize: 12, color: "#e74c3c" }}>🚨 Critical Gaps:</div>
-                {matrixResult.critical_gaps.map((g: any, i: number) => (
-                  <div key={i} style={{ fontSize: 12, padding: "6px 8px", background: "rgba(231,76,60,.08)", borderRadius: 8, marginTop: 4 }}>
-                    <b>{g.requirement}</b> — {g.gap_description}
-                    {g.mitigation && <div style={{ color: "#28b44c", marginTop: 2 }}>→ {g.mitigation}</div>}
+                </Card>
+                <Card>
+                  <div className="text-meta text-muted">Gaps to close</div>
+                  <div className="mt-2 text-stat tnum text-ink">
+                    {toArray(matrix.critical_gaps).length}
                   </div>
-                ))}
+                </Card>
               </div>
-            )}
-          </div>
-        )}
 
-        {/* Documents */}
-        {opp.attachments?.length > 0 && (
-          <div style={{ ...card, marginTop: 12 }}>
-            <div style={cardTitle}>📎 Documents ({opp.attachments.length})</div>
-            {opp.attachments.map((a: any) => (
-              <div key={a.id} style={{ fontSize: 12, padding: "4px 0", borderBottom: "1px solid rgba(255,255,255,.06)" }}>
-                📄 {a.original_filename || a.filename} <span style={{ opacity: 0.4 }}>({a.file_type})</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
+              {matrix.summary ? (
+                <Card className="mb-gap">
+                  <p className="text-base leading-relaxed text-body">{matrix.summary}</p>
+                </Card>
+              ) : null}
+
+              {toArray(matrix.critical_gaps).length > 0 ? (
+                <Card className="mb-gap">
+                  <CardHeading title="What's missing" />
+                  <ul className="mt-4 space-y-2.5">
+                    {toArray(matrix.critical_gaps).map((g: any, i: number) => (
+                      <li key={i} className="flex gap-2.5 text-base text-body">
+                        <Icon name="warning" className="mt-0.5 text-[16px] text-bad-solid" />
+                        {typeof g === "string" ? g : g.gap ?? JSON.stringify(g)}
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
+              ) : null}
+
+              {toArray(matrix.matrix).length > 0 ? (
+                <Card padded={false} className="overflow-hidden">
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="border-b border-line bg-raised">
+                        <th className="px-card py-3 text-caps uppercase text-muted">Requirement</th>
+                        <th className="px-card py-3 text-caps uppercase text-muted">Can we?</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-line-soft">
+                      {toArray(matrix.matrix).map((row: any, i: number) => {
+                        const met = String(row.status ?? row.compliant ?? "").toLowerCase();
+                        const good = met === "true" || met.includes("yes") || met.includes("meet");
+                        return (
+                          <tr key={i}>
+                            <td className="px-card py-3 text-base text-body">
+                              {row.requirement ?? row.text ?? "—"}
+                            </td>
+                            <td className="px-card py-3">
+                              <Badge tone={good ? "good" : "warn"}>
+                                {good ? "Yes" : sentence(row.status ?? "Needs work")}
+                              </Badge>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </Card>
+              ) : null}
+            </>
+          ) : (
+            <Card padded={false}>
+              <EmptyState
+                icon="fact_check"
+                title="Check it against your company"
+                body="We'll take each requirement and tell you whether your profile already covers it."
+                actions={
+                  <Button tone="primary" onClick={runMatrix}>
+                    Run the check
+                  </Button>
+                }
+              />
+            </Card>
+          )}
+        </div>
+      ) : null}
+    </Page>
   );
 }
 
-function InfoRow({ l, v }: { l: string; v?: string }) {
-  return <><span style={{ opacity: 0.5, fontSize: 12 }}>{l}</span><span style={{ fontSize: 13, fontWeight: 600 }}>{v || "—"}</span></>;
+function toArray(value: unknown): any[] {
+  if (Array.isArray(value)) return value;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed.startsWith("[")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) return parsed;
+      } catch {
+        /* fall through to line splitting */
+      }
+    }
+    return trimmed
+      .split(/\n+/)
+      .map((s) => s.replace(/^[-•*\d.)\s]+/, "").trim())
+      .filter(Boolean);
+  }
+  return [];
 }
-function Stat({ label, value, color }: { label: string; value: number; color: string }) {
-  return <div style={{ textAlign: "center" }}><div style={{ fontWeight: 900, fontSize: 20, color }}>{value || 0}</div><div style={{ fontSize: 10, opacity: 0.5 }}>{label}</div></div>;
-}
-
-const page: React.CSSProperties = { minHeight: "100vh", background: "radial-gradient(1200px 800px at 20% 12%,rgba(122,63,255,.30),transparent 55%),radial-gradient(900px 650px at 78% 28%,rgba(255,185,56,.18),transparent 55%),linear-gradient(180deg,#060712,#0B1020)", color: "rgba(255,255,255,.92)", fontFamily: "ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial" };
-const shell: React.CSSProperties = { width: "min(1100px,calc(100% - 48px))", margin: "0 auto", padding: "28px 0 60px" };
-const topBar: React.CSSProperties = { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px", border: "1px solid rgba(255,255,255,.12)", borderRadius: 18, background: "linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.04))", boxShadow: "0 14px 40px rgba(0,0,0,.45)", flexWrap: "wrap", gap: 10 };
-const card: React.CSSProperties = { border: "1px solid rgba(255,255,255,.10)", borderRadius: 16, background: "rgba(255,255,255,.05)", padding: 16, backdropFilter: "blur(12px)" };
-const cardTitle: React.CSSProperties = { fontWeight: 900, fontSize: 14, color: "rgba(215,182,109,.9)" };
-const infoGrid: React.CSSProperties = { display: "grid", gridTemplateColumns: "100px 1fr", gap: "6px 12px", marginTop: 10 };
-const btn: React.CSSProperties = { border: "1px solid rgba(255,255,255,.14)", borderRadius: 12, padding: "8px 14px", background: "rgba(255,255,255,.08)", color: "rgba(255,255,255,.9)", fontWeight: 700, cursor: "pointer", fontSize: 12, whiteSpace: "nowrap" };
-const btnGold: React.CSSProperties = { ...btn, border: "1px solid rgba(215,182,109,.35)", background: "radial-gradient(420px 160px at 25% 20%,rgba(215,182,109,.18),transparent 60%),linear-gradient(135deg,rgba(122,63,255,.18),rgba(255,185,56,.10))" };
-const errBox: React.CSSProperties = { marginTop: 10, borderRadius: 14, border: "1px solid rgba(255,100,100,.22)", background: "rgba(255,90,90,.08)", padding: 12, color: "rgba(255,150,150,.9)", fontSize: 13 };

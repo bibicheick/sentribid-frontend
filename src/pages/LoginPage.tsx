@@ -1,109 +1,105 @@
-// src/pages/LoginPage.tsx
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { api } from "../lib/api";
-import { setToken } from "../lib/auth";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { api } from "@/lib/api";
+import { setToken } from "@/lib/auth";
+import AuthLayout from "@/components/AuthLayout";
+import { Alert, Button, Field, Icon, Input } from "@/ui/kit";
 
 export default function LoginPage() {
-  const nav = useNavigate();
-  const [username, setUsername] = useState("admin");
-  const [password, setPassword] = useState("admin123");
+  const navigate = useNavigate();
+  const location = useLocation();
+  const from = (location.state as { from?: string } | null)?.from ?? "/";
+
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  async function onLogin(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
     setLoading(true);
-
     try {
       const res = await api.post("/auth/login", { username, password });
-      const token = res.data?.access_token as string | undefined;
-      if (!token) throw new Error("No access_token returned from backend.");
-
-      localStorage.setItem("token", token);
-      try { setToken(token); } catch { }
-
-      const saved = localStorage.getItem("token");
-      if (!saved) throw new Error("Token was not saved to localStorage.");
-
-      nav("/discover", { replace: true });
+      const token = res.data?.access_token;
+      if (!token) throw new Error("The server didn't send back a session. Try again.");
+      setToken(token);
+      navigate(from, { replace: true });
     } catch (e: any) {
-      let msg = e?.response?.data?.detail || e?.response?.data?.message || e?.message || "Login failed";
-      if (typeof msg === "object") {
-        try { msg = JSON.stringify(msg); } catch { msg = "Login failed"; }
-      }
-      setErr(String(msg));
+      const detail = e?.response?.data?.detail ?? e?.message;
+      setErr(
+        e?.response?.status === 401
+          ? "That username and password don't match. Check both and try again."
+          : typeof detail === "string"
+          ? detail
+          : "We couldn't sign you in. Try again in a moment."
+      );
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div style={pageStyle}>
-      <form onSubmit={onLogin} style={cardStyle}>
-        <div style={{ fontWeight: 950, fontSize: 22, letterSpacing: "-0.03em" }}>
-          Sentri<span style={{ color: "rgba(215,182,109,.9)" }}>BiD</span>
-          <span style={{ fontWeight: 400, fontSize: 11, opacity: 0.4, marginLeft: 6 }}>v0.7.0</span>
-        </div>
-        <div style={{ opacity: 0.72, marginTop: 6, fontSize: 13, color: "rgba(255,255,255,.75)" }}>
-          Sign in to access your bid intelligence dashboard.
+    <AuthLayout
+      title="Sign in"
+      summary="Pick up where you left off."
+      footer={
+        <>
+          New here?{" "}
+          <Link to="/register" className="font-medium text-brand-600 hover:text-brand-700">
+            Create an account
+          </Link>
+        </>
+      }
+    >
+      <form onSubmit={submit} className="space-y-5">
+        {err ? <Alert onDismiss={() => setErr(null)}>{err}</Alert> : null}
+
+        <Field label="Username or email">
+          <Input
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            autoComplete="username"
+            autoFocus
+            required
+          />
+        </Field>
+
+        <Field label="Password">
+          <div className="relative">
+            <Input
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              type={showPassword ? "text" : "password"}
+              autoComplete="current-password"
+              required
+              className="pr-11"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              aria-label={showPassword ? "Hide password" : "Show password"}
+              className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded text-faint transition-colors hover:text-body"
+            >
+              <Icon name={showPassword ? "visibility_off" : "visibility"} className="text-[18px]" />
+            </button>
+          </div>
+        </Field>
+
+        <div className="flex justify-end">
+          <Link
+            to="/forgot-password"
+            className="text-meta font-medium text-brand-600 hover:text-brand-700"
+          >
+            Forgot your password?
+          </Link>
         </div>
 
-        <div style={{ marginTop: 14 }}>
-          <div style={labelStyle}>Username / Email</div>
-          <input value={username} onChange={(e) => setUsername(e.target.value)}
-            autoComplete="username" style={inputStyle} />
-        </div>
-
-        <div style={{ marginTop: 12 }}>
-          <div style={labelStyle}>Password</div>
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-            autoComplete="current-password" style={inputStyle} />
-        </div>
-
-        {err ? <div style={errorStyle}>{err}</div> : null}
-
-        <button disabled={loading} style={{ ...btnStyle, opacity: loading ? 0.7 : 1 }}>
-          {loading ? "Signing in..." : "Sign in"}
-        </button>
-
-        <div style={{ marginTop: 10, textAlign: "center" }}>
-          <span onClick={() => nav("/forgot-password")} style={{ fontSize: 12, color: "rgba(122,63,255,.8)", cursor: "pointer", fontWeight: 600 }}>
-            Forgot Password?
-          </span>
-        </div>
-
-        <div style={{ marginTop: 10, textAlign: "center" }}>
-          <span style={{ fontSize: 13, opacity: 0.6, color: "rgba(255,255,255,.72)" }}>
-            Don't have an account?{" "}
-          </span>
-          <span onClick={() => nav("/register")} style={{ fontSize: 13, color: "rgba(215,182,109,.9)", cursor: "pointer", fontWeight: 700 }}>
-            Register
-          </span>
-        </div>
+        <Button type="submit" tone="primary" size="lg" block loading={loading}>
+          Sign in
+        </Button>
       </form>
-    </div>
+    </AuthLayout>
   );
 }
-
-const pageStyle: React.CSSProperties = {
-  minHeight: "100vh", display: "grid", placeItems: "center", padding: 24,
-  background: "radial-gradient(1200px 800px at 15% 10%,rgba(120,88,255,.22),transparent 60%),radial-gradient(900px 650px at 80% 20%,rgba(0,212,255,.12),transparent 55%),radial-gradient(900px 800px at 60% 90%,rgba(215,182,109,.14),transparent 55%),linear-gradient(180deg,#070A12,#0B1020)",
-};
-const cardStyle: React.CSSProperties = {
-  width: "min(420px, 100%)", border: "1px solid rgba(255,255,255,.12)", borderRadius: 18,
-  padding: 18, boxShadow: "0 18px 60px rgba(0,0,0,.45)", background: "rgba(255,255,255,.06)", backdropFilter: "blur(16px)",
-};
-const labelStyle: React.CSSProperties = { fontSize: 12, opacity: 0.75, marginBottom: 6, color: "rgba(255,255,255,.78)" };
-const inputStyle: React.CSSProperties = {
-  width: "100%", padding: "10px 12px", borderRadius: 12, border: "1px solid rgba(255,255,255,.14)",
-  background: "rgba(0,0,0,.20)", color: "rgba(255,255,255,.92)", outline: "none",
-};
-const errorStyle: React.CSSProperties = { marginTop: 12, color: "rgba(255,120,120,.95)", fontSize: 13 };
-const btnStyle: React.CSSProperties = {
-  marginTop: 14, width: "100%", padding: "12px 12px", borderRadius: 14,
-  border: "1px solid rgba(215,182,109,.35)",
-  background: "radial-gradient(420px 160px at 30% 20%,rgba(215,182,109,.22),transparent 60%),linear-gradient(180deg,rgba(255,255,255,.12),rgba(255,255,255,.06))",
-  color: "rgba(255,255,255,.92)", fontWeight: 900, cursor: "pointer",
-};

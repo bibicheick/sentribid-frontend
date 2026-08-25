@@ -1,217 +1,543 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
+import Page from "@/components/Page";
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  Field,
+  Icon,
+  Input,
+  LinkButton,
+  Select,
+  Spinner,
+  cx,
+} from "@/ui/kit";
+import { fileSize, percentLabel, toPercent } from "@/lib/format";
 
-type BidCreate = {
-  contract_title: string;
-  agency_name: string;
-  agency_type: string;
-  solicitation_number?: string;
-  procurement_method?: string;
-  contract_type: string;
-  delivery_distance_miles: number;
-  deadline_date: string; // YYYY-MM-DD
-  urgency_level: number;
-  competition_level: string;
-  risk_level: number;
-  desired_profit_mode: "conservative" | "balanced" | "aggressive";
-  min_acceptable_profit: number;
-  margin_override_pct: number;
-  notes?: string;
-};
+type Step = 1 | 2 | 3;
+type Result = Record<string, any> | null;
 
-const todayPlus = (days: number) => {
-  const d = new Date();
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+/** What the backend works through while the upload request is open. */
+const WORK = [
+  "Reading your documents",
+  "Pulling out the requirements",
+  "Checking what the agency asks for",
+  "Sizing up the competition",
+  "Building the pricing",
+  "Drafting the proposal",
+];
+
+const STEP_LABELS: Record<Step, string> = {
+  1: "Upload",
+  2: "Review",
+  3: "Price & send",
 };
 
 export default function NewBidPage() {
-  const nav = useNavigate();
-  const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const [step, setStep] = useState<Step>(1);
+  const [files, setFiles] = useState<File[]>([]);
+  const [title, setTitle] = useState("");
+  const [agency, setAgency] = useState("");
+  const [format, setFormat] = useState("pdf");
+  const [dragOver, setDragOver] = useState(false);
+
+  const [running, setRunning] = useState(false);
+  const [workIndex, setWorkIndex] = useState(0);
+  const [result, setResult] = useState<Result>(null);
   const [err, setErr] = useState<string | null>(null);
 
-  const [form, setForm] = useState<BidCreate>({
-    contract_title: "",
-    agency_name: "",
-    agency_type: "Federal",
-    solicitation_number: "",
-    procurement_method: "IFB",
-    contract_type: "Supply",
-    delivery_distance_miles: 0,
-    deadline_date: todayPlus(7),
-    urgency_level: 3,
-    competition_level: "Medium",
-    risk_level: 3,
-    desired_profit_mode: "balanced",
-    min_acceptable_profit: 0,
-    margin_override_pct: 0,
-    notes: "",
-  });
+  useEffect(() => {
+    if (!running) return;
+    const t = setInterval(() => setWorkIndex((i) => Math.min(i + 1, WORK.length - 1)), 9000);
+    return () => clearInterval(t);
+  }, [running]);
 
-  function set<K extends keyof BidCreate>(k: K, v: BidCreate[K]) {
-    setForm((p) => ({ ...p, [k]: v }));
+  function addFiles(list: FileList | null) {
+    if (!list?.length) return;
+    const added = Array.from(list);
+    setFiles((prev) => [...prev, ...added]);
+    if (!title) setTitle(added[0].name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " "));
   }
 
-  async function onCreate(e: React.FormEvent) {
-    e.preventDefault();
+  async function run() {
+    if (files.length === 0) return;
+    setRunning(true);
+    setWorkIndex(0);
     setErr(null);
-    setLoading(true);
+    setStep(2);
+
     try {
-      const res = await api.post("/bids", form);
-      const bidId = res.data?.id;
-      if (!bidId) throw new Error("Backend did not return bid id.");
-      nav(`/bids/${bidId}`);
+      const fd = new FormData();
+      files.forEach((f) => fd.append("files", f));
+      fd.append("title", title || files[0].name);
+      fd.append("agency_name", agency || "Unknown Agency");
+      fd.append("format_type", format);
+
+      const res = await api.post("/opportunities/autopilot-upload", fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+        timeout: 300_000,
+      });
+      setResult(res.data);
     } catch (e: any) {
-      setErr(e?.response?.data?.detail || e?.message || "Failed to create bid");
+      setErr(
+        e?.response?.data?.detail ||
+          "We couldn't finish reading those documents. Check the files and try again."
+      );
+      setStep(1);
     } finally {
-      setLoading(false);
+      setRunning(false);
     }
   }
 
   return (
-    <div style={pageStyle}>
-      <div style={shellStyle}>
-        <div style={topBarStyle}>
-          <div>
-            <div style={brandStyle}>SentriBiD</div>
-            <div style={subStyle}>Create New Bid</div>
+    <Page
+      title="New Bid"
+      summary="Upload the solicitation and we'll read it, pull out what the agency is asking for, and build the pricing around it."
+      back={{ to: "/bids", label: "Back to My Bids" }}
+    >
+      <StepBar step={step} />
+
+      {err ? (
+        <Alert className="mx-auto mb-gap max-w-prose" onDismiss={() => setErr(null)}>
+          {err}
+        </Alert>
+      ) : null}
+
+      {step === 1 ? (
+        <UploadStep
+          files={files}
+          setFiles={setFiles}
+          title={title}
+          setTitle={setTitle}
+          agency={agency}
+          setAgency={setAgency}
+          format={format}
+          setFormat={setFormat}
+          dragOver={dragOver}
+          setDragOver={setDragOver}
+          fileRef={fileRef}
+          addFiles={addFiles}
+          onContinue={run}
+        />
+      ) : running ? (
+        <WorkingStep index={workIndex} fileCount={files.length} />
+      ) : result ? (
+        <ReviewStep
+          result={result}
+          title={title}
+          agency={agency}
+          format={format}
+          onBack={() => {
+            setResult(null);
+            setStep(1);
+          }}
+          onContinue={() => {
+            setStep(3);
+            if (result.bid_id) navigate(`/bids/${result.bid_id}`);
+            else if (result.opp_id) navigate(`/opportunities/${result.opp_id}`);
+          }}
+        />
+      ) : null}
+    </Page>
+  );
+}
+
+/* ── Step indicator ───────────────────────────────────────────────────── */
+
+function StepBar({ step }: { step: Step }) {
+  return (
+    <div className="mx-auto mb-10 flex max-w-md items-start">
+      {([1, 2, 3] as Step[]).map((n, i) => {
+        const done = step > n;
+        const active = step === n;
+        return (
+          <div key={n} className="flex flex-1 items-start">
+            <div className="flex flex-1 flex-col items-center">
+              <span
+                className={cx(
+                  "flex h-8 w-8 items-center justify-center rounded-full border text-meta font-semibold transition-colors",
+                  done
+                    ? "border-brand-600 bg-brand-600 text-white"
+                    : active
+                    ? "border-brand-600 bg-white text-brand-700"
+                    : "border-line bg-sunken text-faint"
+                )}
+              >
+                {done ? <Icon name="check" className="text-[16px]" /> : n}
+              </span>
+              <span
+                className={cx(
+                  "mt-2 text-meta font-medium",
+                  done || active ? "text-brand-700" : "text-faint"
+                )}
+              >
+                {STEP_LABELS[n]}
+              </span>
+            </div>
+            {i < 2 ? (
+              <span
+                className={cx(
+                  "mt-4 h-0.5 flex-1 rounded-full",
+                  step > n ? "bg-brand-600" : "bg-line"
+                )}
+              />
+            ) : null}
           </div>
-          <button onClick={() => nav("/bids")} style={btnGhostStyle}>Back</button>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ── Step 1 ───────────────────────────────────────────────────────────── */
+
+function UploadStep(props: {
+  files: File[];
+  setFiles: React.Dispatch<React.SetStateAction<File[]>>;
+  title: string;
+  setTitle: (v: string) => void;
+  agency: string;
+  setAgency: (v: string) => void;
+  format: string;
+  setFormat: (v: string) => void;
+  dragOver: boolean;
+  setDragOver: (v: boolean) => void;
+  fileRef: React.RefObject<HTMLInputElement>;
+  addFiles: (l: FileList | null) => void;
+  onContinue: () => void;
+}) {
+  const {
+    files,
+    setFiles,
+    title,
+    setTitle,
+    agency,
+    setAgency,
+    format,
+    setFormat,
+    dragOver,
+    setDragOver,
+    fileRef,
+    addFiles,
+    onContinue,
+  } = props;
+
+  return (
+    <Card className="mx-auto max-w-prose">
+      <h2 className="text-h2">Upload your RFP</h2>
+      <p className="mt-1.5 text-base text-muted">
+        Add the solicitation and anything that came with it — amendments, attachments, pricing
+        sheets. We read all of them.
+      </p>
+
+      <div
+        onClick={() => fileRef.current?.click()}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+          addFiles(e.dataTransfer.files);
+        }}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") fileRef.current?.click();
+        }}
+        className={cx(
+          "mt-6 flex cursor-pointer flex-col items-center justify-center rounded-card border-2 border-dashed px-6 py-12 text-center transition-colors",
+          dragOver ? "border-brand-600 bg-brand-50" : "border-line bg-raised hover:border-brand-300"
+        )}
+      >
+        <Icon name="upload_file" className="text-[28px] text-faint" />
+        <p className="mt-3 text-h3 text-ink">Drag files here</p>
+        <p className="mt-1 text-meta text-muted">
+          or click to browse — PDF, Word, Excel, CSV or text
+        </p>
+      </div>
+
+      <input
+        ref={fileRef}
+        type="file"
+        multiple
+        hidden
+        accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.rtf"
+        onChange={(e) => {
+          addFiles(e.target.files);
+          if (fileRef.current) fileRef.current.value = "";
+        }}
+      />
+
+      {files.length > 0 ? (
+        <ul className="mt-4 divide-y divide-line-soft rounded-control border border-line">
+          {files.map((f, i) => (
+            <li key={`${f.name}-${i}`} className="flex items-center gap-3 px-4 py-3">
+              <Icon name="draft" className="text-[20px] text-faint" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-base text-ink">{f.name}</span>
+                <span className="block text-meta text-muted">{fileSize(f.size)}</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))}
+                aria-label={`Remove ${f.name}`}
+                className="text-faint transition-colors hover:text-bad-ink"
+              >
+                <Icon name="close" className="text-[18px]" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Field label="Contract title">
+          <Input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="We'll fill this in from the filename"
+          />
+        </Field>
+        <Field label="Agency">
+          <Input
+            value={agency}
+            onChange={(e) => setAgency(e.target.value)}
+            placeholder="Leave blank and we'll detect it"
+          />
+        </Field>
+      </div>
+
+      <Field label="Proposal format" className="mt-4 sm:max-w-[200px]">
+        <Select value={format} onChange={(e) => setFormat(e.target.value)}>
+          <option value="pdf">PDF</option>
+          <option value="docx">Word (.docx)</option>
+        </Select>
+      </Field>
+
+      <div className="mt-8 flex items-center justify-between gap-3 border-t border-line-soft pt-5">
+        <LinkButton to="/bids" tone="ghost">
+          Cancel
+        </LinkButton>
+        <Button tone="primary" size="lg" disabled={files.length === 0} onClick={onContinue}>
+          Continue
+        </Button>
+      </div>
+
+      {files.length === 0 ? (
+        <p className="mt-3 text-right text-meta text-muted">Add at least one document to continue.</p>
+      ) : null}
+    </Card>
+  );
+}
+
+/* ── Step 2, running ──────────────────────────────────────────────────── */
+
+function WorkingStep({ index, fileCount }: { index: number; fileCount: number }) {
+  return (
+    <Card className="mx-auto max-w-prose">
+      <div className="flex items-center gap-3">
+        <Spinner className="text-brand-600" />
+        <h2 className="text-h2">Reading your {fileCount === 1 ? "document" : "documents"}</h2>
+      </div>
+      <p className="mt-1.5 text-base text-muted">
+        This usually takes a minute or two. You can leave this page open — we'll keep working.
+      </p>
+
+      <ol className="mt-6 space-y-3">
+        {WORK.map((label, i) => {
+          const done = i < index;
+          const active = i === index;
+          return (
+            <li key={label} className="flex items-center gap-3">
+              <span
+                className={cx(
+                  "flex h-6 w-6 shrink-0 items-center justify-center rounded-full border",
+                  done
+                    ? "border-good-line bg-good-bg text-good-ink"
+                    : active
+                    ? "border-brand-200 bg-brand-50 text-brand-700"
+                    : "border-line bg-sunken text-faint"
+                )}
+              >
+                {done ? (
+                  <Icon name="check" className="text-[14px]" />
+                ) : active ? (
+                  <Spinner className="h-3 w-3" />
+                ) : (
+                  <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                )}
+              </span>
+              <span
+                className={cx(
+                  "text-base",
+                  done ? "text-muted" : active ? "font-medium text-ink" : "text-faint"
+                )}
+              >
+                {label}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+    </Card>
+  );
+}
+
+/* ── Step 2, results ──────────────────────────────────────────────────── */
+
+function ReviewStep({
+  result,
+  title,
+  agency,
+  format,
+  onBack,
+  onContinue,
+}: {
+  result: Record<string, any>;
+  title: string;
+  agency: string;
+  format: string;
+  onBack: () => void;
+  onContinue: () => void;
+}) {
+  const analysis = result.analysis ?? {};
+  const warRoom = result.war_room ?? {};
+  const compliance = result.compliance ?? {};
+  const errors: string[] = Array.isArray(result.errors) ? result.errors : [];
+
+  const confidence = toPercent(analysis.confidence);
+  const winProb = toPercent(warRoom.win_probability);
+  const complianceScore = toPercent(compliance.score);
+  const recommendsBid = String(analysis.recommendation ?? "").toLowerCase().includes("bid");
+
+  const summaryText =
+    analysis.summary ?? analysis.scope_summary ?? warRoom.bottom_line ?? null;
+
+  return (
+    <div className="mx-auto max-w-[900px]">
+      <div className="mb-8 text-center">
+        <h2 className="text-h1">Here's what we found</h2>
+        <p className="mt-1.5 text-base text-muted">
+          Have a read before we build your pricing. You can change any of it later.
+        </p>
+      </div>
+
+      <div className="space-y-gap">
+        <Card>
+          <h3 className="text-h2">Contract summary</h3>
+          <dl className="mt-5 divide-y divide-line-soft">
+            <ReviewRow label="Agency">{analysis.agency ?? agency ?? "Not stated"}</ReviewRow>
+            <ReviewRow label="Contract">{analysis.title ?? title ?? "Untitled"}</ReviewRow>
+            {summaryText ? (
+              <ReviewRow label="What they need">{summaryText}</ReviewRow>
+            ) : null}
+            {analysis.contract_type ? (
+              <ReviewRow label="Contract type">{analysis.contract_type}</ReviewRow>
+            ) : null}
+            {analysis.due_date ? <ReviewRow label="Proposal due">{analysis.due_date}</ReviewRow> : null}
+            {analysis.estimated_value ? (
+              <ReviewRow label="Estimated value">{analysis.estimated_value}</ReviewRow>
+            ) : null}
+          </dl>
+        </Card>
+
+        <div className="grid grid-cols-1 gap-gap sm:grid-cols-3">
+          <Card>
+            <div className="text-meta text-muted">Our recommendation</div>
+            <div
+              className={cx(
+                "mt-2 text-h2",
+                recommendsBid ? "text-good-solid" : "text-warn-ink"
+              )}
+            >
+              {recommendsBid ? "Worth bidding" : "Think carefully"}
+            </div>
+            {confidence !== null ? (
+              <div className="mt-1 text-meta text-muted">
+                {percentLabel(confidence)} confident
+              </div>
+            ) : null}
+          </Card>
+          <Card>
+            <div className="text-meta text-muted">Win chance</div>
+            <div className="mt-2 text-stat tnum text-ink">
+              {winProb !== null ? percentLabel(winProb) : "—"}
+            </div>
+            <div className="mt-1 text-meta text-muted">Against likely competition</div>
+          </Card>
+          <Card>
+            <div className="text-meta text-muted">Requirements covered</div>
+            <div className="mt-2 text-stat tnum text-ink">
+              {complianceScore !== null ? percentLabel(complianceScore) : "—"}
+            </div>
+            <div className="mt-1 text-meta text-muted">
+              {compliance.gaps ? `${compliance.gaps} gaps to close` : "No gaps flagged"}
+            </div>
+          </Card>
         </div>
 
-        <form onSubmit={onCreate} style={cardStyle}>
-          <div style={titleStyle}>New Bid</div>
-          <div style={mutedStyle}>Fill the basics. You can add items/labor after.</div>
+        {warRoom.bottom_line ? (
+          <Card>
+            <h3 className="text-h2">The short version</h3>
+            <p className="mt-3 text-base leading-relaxed text-body">{warRoom.bottom_line}</p>
+          </Card>
+        ) : null}
 
-          {err ? (
-            <div style={alertStyle}>
-              <b>Error</b>
-              <div style={{ marginTop: 6 }}>{err}</div>
-            </div>
+        {errors.length > 0 ? (
+          <Alert tone="warn" title="Some steps didn't finish">
+            <ul className="mt-1 space-y-0.5">
+              {errors.map((e, i) => (
+                <li key={i}>· {e}</li>
+              ))}
+            </ul>
+          </Alert>
+        ) : null}
+      </div>
+
+      <div className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-line-soft pt-5">
+        <Button tone="ghost" icon="arrow_back" onClick={onBack}>
+          Start over
+        </Button>
+        <div className="flex flex-wrap gap-2.5">
+          {result.has_proposal && result.proposal_download ? (
+            <a
+              href={`${api.defaults.baseURL ?? ""}${result.proposal_download}`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex h-11 items-center gap-2 rounded-control border border-line bg-white px-5 text-base font-medium text-body shadow-card transition-colors hover:bg-raised"
+            >
+              <Icon name="download" className="text-[18px]" />
+              Download proposal ({format.toUpperCase()})
+            </a>
           ) : null}
-
-          <div style={gridStyle}>
-            <Field label="Contract title">
-              <input value={form.contract_title} onChange={(e) => set("contract_title", e.target.value)} style={inputStyle} required />
-            </Field>
-
-            <Field label="Agency name">
-              <input value={form.agency_name} onChange={(e) => set("agency_name", e.target.value)} style={inputStyle} required />
-            </Field>
-
-            <Field label="Agency type">
-              <select value={form.agency_type} onChange={(e) => set("agency_type", e.target.value)} style={inputStyle}>
-                <option>Federal</option>
-                <option>State</option>
-                <option>Local</option>
-                <option>Commercial</option>
-              </select>
-            </Field>
-
-            <Field label="Contract type">
-              <select value={form.contract_type} onChange={(e) => set("contract_type", e.target.value)} style={inputStyle}>
-                <option>Supply</option>
-                <option>Service</option>
-                <option>Construction</option>
-                <option>IT</option>
-              </select>
-            </Field>
-
-            <Field label="Deadline (YYYY-MM-DD)">
-              <input type="date" value={form.deadline_date} onChange={(e) => set("deadline_date", e.target.value)} style={inputStyle} />
-            </Field>
-
-            <Field label="Delivery miles">
-              <input type="number" value={form.delivery_distance_miles} onChange={(e) => set("delivery_distance_miles", Number(e.target.value))} style={inputStyle} />
-            </Field>
-
-            <Field label="Risk level (1-5)">
-              <input type="number" min={1} max={5} value={form.risk_level} onChange={(e) => set("risk_level", Number(e.target.value))} style={inputStyle} />
-            </Field>
-
-            <Field label="Profit mode">
-              <select value={form.desired_profit_mode} onChange={(e) => set("desired_profit_mode", e.target.value as any)} style={inputStyle}>
-                <option value="conservative">Conservative</option>
-                <option value="balanced">Balanced</option>
-                <option value="aggressive">Aggressive</option>
-              </select>
-            </Field>
-          </div>
-
-          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 14 }}>
-            <button type="button" onClick={() => nav("/bids")} style={btnGhostStyle}>Cancel</button>
-            <button disabled={loading} style={btnPrimaryStyle}>
-              {loading ? "Creating..." : "Create Bid"}
-            </button>
-          </div>
-        </form>
+          {result.opp_id ? (
+            <LinkButton to={`/opportunities/${result.opp_id}`} size="lg">
+              View opportunity
+            </LinkButton>
+          ) : null}
+          <Button tone="primary" size="lg" onClick={onContinue}>
+            Continue to pricing
+          </Button>
+        </div>
       </div>
     </div>
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function ReviewRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div>
-      <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 6 }}>{label}</div>
-      {children}
+    <div className="grid grid-cols-1 gap-1 py-3 first:pt-0 last:pb-0 md:grid-cols-3 md:gap-6">
+      <dt className="text-meta text-muted">{label}</dt>
+      <dd className="text-base text-ink md:col-span-2">{children}</dd>
     </div>
   );
 }
-
-/* Styling (same Apple + Afro Royal vibe) */
-const pageStyle: React.CSSProperties = {
-  minHeight: "100vh",
-  background:
-    "radial-gradient(1200px 800px at 15% 10%, rgba(120,88,255,.22), transparent 60%)," +
-    "radial-gradient(900px 650px at 80% 20%, rgba(0,212,255,.12), transparent 55%)," +
-    "radial-gradient(900px 800px at 60% 90%, rgba(215,182,109,.14), transparent 55%)," +
-    "linear-gradient(180deg, #070A12, #0B1020)",
-  color: "rgba(255,255,255,.92)",
-  fontFamily:
-    "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, Apple Color Emoji, Segoe UI Emoji",
-};
-const shellStyle: React.CSSProperties = { width: "min(1100px, calc(100% - 48px))", margin: "0 auto", padding: "26px 0 44px" };
-const topBarStyle: React.CSSProperties = {
-  display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14,
-  padding: "14px 16px", border: "1px solid rgba(255,255,255,.12)", borderRadius: 18,
-  background: "linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.04))",
-  boxShadow: "0 14px 40px rgba(0,0,0,.45)", backdropFilter: "blur(14px)",
-};
-const brandStyle: React.CSSProperties = { fontWeight: 900, letterSpacing: ".3px" };
-const subStyle: React.CSSProperties = { fontSize: 12, opacity: 0.7, marginTop: 2 };
-
-const cardStyle: React.CSSProperties = {
-  marginTop: 14, border: "1px solid rgba(255,255,255,.12)", borderRadius: 18,
-  background: "rgba(255,255,255,.06)", boxShadow: "0 14px 40px rgba(0,0,0,.35)",
-  backdropFilter: "blur(16px)", padding: 16,
-};
-const titleStyle: React.CSSProperties = { fontSize: 18, fontWeight: 900 };
-const mutedStyle: React.CSSProperties = { marginTop: 6, fontSize: 13, opacity: 0.75 };
-
-const gridStyle: React.CSSProperties = { marginTop: 14, display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12 };
-const inputStyle: React.CSSProperties = {
-  width: "100%", padding: "10px 12px", borderRadius: 14,
-  border: "1px solid rgba(255,255,255,.12)", background: "rgba(0,0,0,.18)",
-  color: "rgba(255,255,255,.92)", outline: "none",
-};
-
-const btnBase: React.CSSProperties = {
-  border: "1px solid rgba(255,255,255,.14)", borderRadius: 14, padding: "10px 12px",
-  background: "linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.06))",
-  color: "rgba(255,255,255,.92)", fontWeight: 800, cursor: "pointer",
-};
-const btnPrimaryStyle: React.CSSProperties = {
-  ...btnBase,
-  border: "1px solid rgba(215,182,109,.35)",
-  background:
-    "radial-gradient(400px 160px at 30% 20%, rgba(215,182,109,.22), transparent 60%)," +
-    "linear-gradient(180deg, rgba(255,255,255,.12), rgba(255,255,255,.06))",
-};
-const btnGhostStyle: React.CSSProperties = { ...btnBase, background: "transparent" };
-
-const alertStyle: React.CSSProperties = {
-  marginTop: 14, borderRadius: 18, border: "1px solid rgba(255,120,120,.22)",
-  background: "rgba(255,90,90,.08)", padding: 14,
-};
