@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
 import { setToken } from "@/lib/auth";
-import AuthLayout from "@/components/AuthLayout";
+import AuthLayout, { AUTH_BACKDROPS } from "@/components/AuthLayout";
 import { Alert, Button, Field, Input } from "@/ui/kit";
 
 export default function RegisterPage() {
@@ -48,6 +48,7 @@ export default function RegisterPage() {
     <AuthLayout
       title="Create your account"
       summary="Two minutes to set up. No card needed."
+      backdrop={AUTH_BACKDROPS.street}
       footer={
         <>
           Already have an account?{" "}
@@ -107,6 +108,18 @@ export default function RegisterPage() {
         <Button type="submit" tone="primary" size="lg" block loading={loading}>
           Create account
         </Button>
+
+        <p className="text-center text-meta leading-relaxed text-muted">
+          By creating an account you agree to our{" "}
+          <Link to="/terms" className="underline hover:text-body">
+            Terms
+          </Link>{" "}
+          and{" "}
+          <Link to="/privacy" className="underline hover:text-body">
+            Privacy Policy
+          </Link>
+          .
+        </p>
       </form>
     </AuthLayout>
   );

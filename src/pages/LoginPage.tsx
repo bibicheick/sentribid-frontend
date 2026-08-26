@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
 import { setToken } from "@/lib/auth";
-import AuthLayout from "@/components/AuthLayout";
+import AuthLayout, { AUTH_BACKDROPS } from "@/components/AuthLayout";
 import { Alert, Button, Field, Icon, Input } from "@/ui/kit";
 
 export default function LoginPage() {
@@ -44,6 +44,7 @@ export default function LoginPage() {
     <AuthLayout
       title="Sign in"
       summary="Pick up where you left off."
+      backdrop={AUTH_BACKDROPS.desk}
       footer={
         <>
           New here?{" "}

@@ -3,11 +3,14 @@ import { Link } from "react-router-dom";
 import { Icon } from "@/ui/kit";
 
 /**
- * Backdrop for the left panel. Served from public/ — a local file, so there's
- * nothing to expire. It sits under a heavy white wash so the text on top stays
- * readable: it's texture, not a picture you're meant to look at.
+ * Backdrops for the left panel, served from public/ — local files, so there's
+ * nothing to expire. Each sits under a heavy white wash so the text on top
+ * stays readable: it's texture, not a picture you're meant to look at.
  */
-const BACKDROP = "/auth-backdrop.jpg";
+export const AUTH_BACKDROPS = {
+  street: "/auth-backdrop.jpg",
+  desk: "/hero.jpg",
+} as const;
 
 const POINTS = [
   {
@@ -32,11 +35,13 @@ export default function AuthLayout({
   summary,
   children,
   footer,
+  backdrop = AUTH_BACKDROPS.street,
 }: {
   title: string;
   summary: string;
   children: React.ReactNode;
   footer?: React.ReactNode;
+  backdrop?: string;
 }) {
   useEffect(() => {
     document.title = `${title} · SentriBiD`;
@@ -48,7 +53,7 @@ export default function AuthLayout({
       <aside
         className="hidden w-[46%] max-w-xl flex-col justify-between border-r border-line bg-surface bg-cover bg-center p-12 lg:flex"
         style={{
-          backgroundImage: `linear-gradient(rgba(255,255,255,0.88), rgba(255,255,255,0.88)), url("${BACKDROP}")`,
+          backgroundImage: `linear-gradient(rgba(255,255,255,0.87), rgba(255,255,255,0.87)), url("${backdrop}")`,
         }}
       >
         <Link to="/" className="text-[19px] font-semibold tracking-[-0.02em] text-ink">

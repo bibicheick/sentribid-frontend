@@ -6,6 +6,8 @@ export default {
       colors: {
         // Page + surfaces
         canvas: "#F7F8FA",
+        /** The pale indigo the marketing pages alternate on. */
+        wash: "#E7EEFE",
         surface: "#FFFFFF",
         raised: "#FBFBFD",
         sunken: "#F1F2F5",

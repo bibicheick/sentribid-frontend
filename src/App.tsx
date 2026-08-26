@@ -4,6 +4,7 @@ import AppLayout from "./components/AppLayout";
 import { isAuthed } from "./lib/auth";
 
 import LandingPage from "./pages/LandingPage";
+import LegalPage from "./pages/LegalPage";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
@@ -31,6 +32,8 @@ export default function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/privacy" element={<LegalPage page="privacy" />} />
+      <Route path="/terms" element={<LegalPage page="terms" />} />
 
       {/* Signed in, but shown without the app shell */}
       <Route
