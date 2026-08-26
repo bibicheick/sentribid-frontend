@@ -49,9 +49,12 @@ export default function AuthLayout({
 
   return (
     <div className="flex min-h-screen bg-canvas">
-      {/* Left: the pitch. Hidden on small screens — nobody signs in to read it. */}
+      {/* Left: the pitch. Hidden on phones and small tablets — nobody signs in to
+          read it. The breakpoint is md, not lg: a laptop window that isn't
+          maximised sits just under 1024px, which used to hide the panel on the
+          exact screens most people sign in from. */}
       <aside
-        className="hidden w-[46%] max-w-xl flex-col justify-between border-r border-line bg-surface bg-cover bg-center p-12 lg:flex"
+        className="hidden w-[46%] max-w-xl flex-col justify-between border-r border-line bg-surface bg-cover bg-center p-8 md:flex lg:p-12"
         style={{
           backgroundImage: `linear-gradient(rgba(255,255,255,0.87), rgba(255,255,255,0.87)), url("${backdrop}")`,
         }}
@@ -87,7 +90,7 @@ export default function AuthLayout({
         <div className="w-full max-w-sm">
           <Link
             to="/"
-            className="mb-10 block text-[19px] font-semibold tracking-[-0.02em] text-ink lg:hidden"
+            className="mb-10 block text-[19px] font-semibold tracking-[-0.02em] text-ink md:hidden"
           >
             Sentri<span className="text-brand-600">BiD</span>
           </Link>
