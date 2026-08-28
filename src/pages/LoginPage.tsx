@@ -8,7 +8,9 @@ import { Alert, Button, Field, Icon, Input } from "@/ui/kit";
 export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const from = (location.state as { from?: string } | null)?.from ?? "/";
+  // Default to the dashboard, not "/": landing on "/" only works if the router
+  // re-evaluates the session, and it's one less hop for someone signing in cold.
+  const from = (location.state as { from?: string } | null)?.from ?? "/dashboard";
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -21,7 +23,11 @@ export default function LoginPage() {
     setErr(null);
     setLoading(true);
     try {
-      const res = await api.post("/auth/login", { username, password });
+      // The backend's LoginRequest field is `email`, not `username` — sending
+      // `username` meant the server saw no identifier at all and rejected every
+      // attempt. The legacy admin login also reads this same field, so the
+      // input still accepts a plain username.
+      const res = await api.post("/auth/login", { email: username.trim(), password });
       const token = res.data?.access_token;
       if (!token) throw new Error("The server didn't send back a session. Try again.");
       setToken(token);

@@ -25,8 +25,12 @@ import ExportPage from "./pages/ExportPage";
 export default function App() {
   return (
     <Routes>
-      {/* The marketing site for visitors; the app for people who are signed in. */}
-      <Route path="/" element={isAuthed() ? <SignedInHome /> : <LandingPage />} />
+      {/* The marketing site for visitors; the app for people who are signed in.
+          The check has to live INSIDE a component, not in this element prop:
+          App doesn't re-render on navigation, so an inline isAuthed() call is
+          frozen at whatever it returned on first paint — which sent people
+          straight back to the landing page the moment they signed in. */}
+      <Route path="/" element={<Home />} />
 
       {/* Signed out */}
       <Route path="/login" element={<LoginPage />} />
@@ -85,7 +89,8 @@ export default function App() {
   );
 }
 
-/** Signed in and asking for "/" — send them to the app, not the sales page. */
-function SignedInHome() {
-  return <Navigate to="/dashboard" replace />;
+/** Signed in and asking for "/" — send them to the app, not the sales page.
+ *  Read fresh on every render, so it follows the token instead of lagging it. */
+function Home() {
+  return isAuthed() ? <Navigate to="/dashboard" replace /> : <LandingPage />;
 }
